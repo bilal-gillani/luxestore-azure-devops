@@ -1,30 +1,50 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
-
 trigger:
-- main
+  - main
 
 pool:
   vmImage: ubuntu-latest
 
-steps:
-- script: echo "Starting LuxeStore CI/CD Pipeline Build!"
-  displayName: 'Print Welcome Message'
+stages:
+  # ============================================================
+  # Stage 1: Build Stage (Continuous Integration - CI)
+  # ============================================================
+  - stage: Build
+    displayName: 'Build (CI)'
+    jobs:
+      - job: BuildJob
+        displayName: 'Build & Test Job'
+        steps:
+          - script: echo "🚀 Starting LuxeStore CI/CD Pipeline Build!"
+            displayName: 'Print Welcome Message'
 
-- script: |
-    echo "=== Agent Information ==="
-    uname -a
-    hostname
-    echo "=== Tool Versions ==="
-    node -v
-    npm -v
-    docker --version
-  displayName: 'Check Pre-installed Tools'
+          - script: |
+              echo "=== Agent Information ==="
+              uname -a
+              hostname
+              echo "=== Tool Versions ==="
+              node -v
+              npm -v
+              docker --version
+            displayName: 'Check Pre-installed Tools'
 
-- script: |
-    echo "=== Workspace Contents ==="
-    pwd
-    ls -la
-  displayName: 'List Repository Files'
+          - script: |
+              echo "=== Workspace Contents ==="
+              pwd
+              ls -la
+            displayName: 'List Repository Files'
+
+  # ============================================================
+  # Stage 2: Release Stage (Continuous Deployment - CD)
+  # ============================================================
+  - stage: Deploy
+    displayName: 'Deploy (CD)'
+    dependsOn: Build
+    condition: succeeded()
+    jobs:
+      - job: DeployJob
+        displayName: 'Deployment Job'
+        steps:
+          - script: |
+              echo "📦 Build stage passed successfully!"
+              echo "Preparing to deploy to Azure Container Apps..."
+            displayName: 'Deployment Preparation'
