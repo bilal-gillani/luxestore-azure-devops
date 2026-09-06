@@ -18,9 +18,9 @@ server {
         try_files $uri =404;
     }
 
-    # Proxy /api/* → Backend VM (private subnet)
+    # Proxy /api/* → Backend (dynamically substituted from ${BACKEND_URL})
     location /api/ {
-        proxy_pass         http://backend:3000;
+        proxy_pass         ${BACKEND_URL};
         proxy_http_version 1.1;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
