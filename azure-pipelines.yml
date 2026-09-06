@@ -27,4 +27,4 @@ steps:
     echo "=== Workspace Contents ==="
     pwd
     ls -la
-    displayName: 'List Repository Files'
+  displayName: 'List Repository Files'
