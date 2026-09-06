@@ -10,10 +10,21 @@ pool:
   vmImage: ubuntu-latest
 
 steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
+- script: echo "Starting LuxeStore CI/CD Pipeline Build!"
+  displayName: 'Print Welcome Message'
 
 - script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+    echo "=== Agent Information ==="
+    uname -a
+    hostname
+    echo "=== Tool Versions ==="
+    node -v
+    npm -v
+    docker --version
+  displayName: 'Check Pre-installed Tools'
+
+- script: |
+    echo "=== Workspace Contents ==="
+    pwd
+    ls -la
+    displayName: 'List Repository Files'
