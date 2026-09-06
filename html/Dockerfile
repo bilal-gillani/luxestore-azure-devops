@@ -3,14 +3,14 @@ FROM nginx:1.27-alpine
 # Remove default nginx html files and pre-packaged configs
 RUN rm -rf /usr/share/nginx/html/* /etc/nginx/conf.d/default.conf
 
-# Copy custom nginx configuration template for auto-envsubst
-COPY default.conf.template /etc/nginx/templates/default.conf
+# Copy custom nginx configuration template (MUST end in .template)
+COPY default.conf.template /etc/nginx/templates/default.conf.template
 
 # Copy frontend static files
 COPY . /usr/share/nginx/html
 
 # Clean up template from public web directory
-RUN rm -f /usr/share/nginx/html/default.conf
+RUN rm -f /usr/share/nginx/html/default.conf.template
 
 # Only substitute BACKEND_URL so Nginx built-in variables ($host, $uri, etc.) are untouched
 ENV NGINX_ENVSUBST_FILTER="BACKEND_URL"
