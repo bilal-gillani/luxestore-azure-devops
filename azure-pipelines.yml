@@ -4,34 +4,61 @@ trigger:
 pool:
   vmImage: ubuntu-latest
 
+# ============================================================
+# Pipeline Variables
+# ============================================================
+variables:
+  # Update this with the Service Connection name you created in Project Settings
+  dockerRegistryServiceConnection: 'clouddevsecops-acr service connection'
+  
+  # Image repositories inside your ACR
+  backendRepository: 'luxestore-backend'
+  frontendRepository: 'luxestore-frontend'
+
 stages:
   # ============================================================
   # Stage 1: Build Stage (Continuous Integration - CI)
   # ============================================================
   - stage: Build
-    displayName: 'Build (CI)'
+    displayName: 'Build & Push (CI)'
     jobs:
-      - job: BuildJob
-        displayName: 'Build & Test Job'
+      - job: BuildAndPushJob
+        displayName: 'Test, Build & Push Images'
         steps:
-          - script: echo "🚀 Starting LuxeStore CI/CD Pipeline Build!"
-            displayName: 'Print Welcome Message'
-
+          # --- Step 1: Fast Feedback / Code & Dependency Check ---
           - script: |
-              echo "=== Agent Information ==="
-              uname -a
-              hostname
-              echo "=== Tool Versions ==="
-              node -v
-              npm -v
-              docker --version
-            displayName: 'Check Pre-installed Tools'
+              echo "=== Verifying Backend Code ==="
+              cd ecommerce-backend
+              npm ci --omit=dev || npm install --omit=dev
+              node --check server.js
+              echo "✅ Backend syntax and dependencies validated!"
+            displayName: 'Validate Backend Dependencies & Syntax'
 
-          - script: |
-              echo "=== Workspace Contents ==="
-              pwd
-              ls -la
-            displayName: 'List Repository Files'
+          # --- Step 2: Build & Push Backend Docker Image ---
+          - task: Docker@2
+            displayName: 'Build and Push Backend Image to ACR'
+            inputs:
+              containerRegistry: '$(dockerRegistryServiceConnection)'
+              repository: '$(backendRepository)'
+              command: 'buildAndPush'
+              Dockerfile: 'ecommerce-backend/Dockerfile'
+              buildContext: 'ecommerce-backend'
+              tags: |
+                $(Build.BuildId)
+                latest
+
+          # --- Step 3: Build & Push Frontend Docker Image ---
+          - task: Docker@2
+            displayName: 'Build and Push Frontend Image to ACR'
+            inputs:
+              containerRegistry: '$(dockerRegistryServiceConnection)'
+              repository: '$(frontendRepository)'
+              command: 'buildAndPush'
+              Dockerfile: 'html/Dockerfile'
+              buildContext: 'html'
+              tags: |
+                $(Build.BuildId)
+                latest
 
   # ============================================================
   # Stage 2: Release Stage (Continuous Deployment - CD)
@@ -45,6 +72,9 @@ stages:
         displayName: 'Deployment Job'
         steps:
           - script: |
-              echo "📦 Build stage passed successfully!"
-              echo "Preparing to deploy to Azure Container Apps..."
-            displayName: 'Deployment Preparation'
+              echo "📦 Build stage passed and images pushed to ACR!"
+              echo "Image Tags:"
+              echo "  - Backend : $(backendRepository):$(Build.BuildId)"
+              echo "  - Frontend: $(frontendRepository):$(Build.BuildId)"
+              echo "Ready for Terraform and Azure Container Apps deployment."
+            displayName: 'Deployment Placeholder'
