@@ -8,10 +8,15 @@ pool:
 # Pipeline Variables
 # ============================================================
 variables:
-  # Update this with the Service Connection name you created in Project Settings
-  dockerRegistryServiceConnection: 'clouddevsecops-acr service connection'
-  
-  # Image repositories inside your ACR
+  # ARM Service Connection name (Project Settings → Service Connections)
+  # This is the cross-tenant service connection you set up
+  azureServiceConnection: 'YOUR_ARM_SERVICE_CONNECTION_NAME'
+
+  # ACR details — the registry you already created in your resource group
+  acrName: 'YOUR_ACR_NAME'                        # e.g. luxestoreacr  (no .azurecr.io)
+  acrLoginServer: '$(acrName).azurecr.io'         # full login server, derived automatically
+
+  # Image repository names inside ACR
   backendRepository: 'luxestore-backend'
   frontendRepository: 'luxestore-frontend'
 
@@ -34,31 +39,60 @@ stages:
               echo "✅ Backend syntax and dependencies validated!"
             displayName: 'Validate Backend Dependencies & Syntax'
 
-          # --- Step 2: Build & Push Backend Docker Image ---
-          - task: Docker@2
+          # --- Step 2: Authenticate Docker to ACR via ARM Service Connection ---
+          # The SP (with AcrPush role on ACR) logs Docker into the registry.
+          # Credentials are stored in ~/.docker/config.json on the agent
+          # and persist for all subsequent steps in this job.
+          - task: AzureCLI@2
+            displayName: 'Login to ACR'
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                echo "=== Authenticating Docker to ACR ==="
+                az acr login --name $(acrName)
+                echo "✅ Logged in to $(acrLoginServer)"
+
+          # --- Step 3: Build & Push Backend Docker Image ---
+          - task: AzureCLI@2
             displayName: 'Build and Push Backend Image to ACR'
             inputs:
-              containerRegistry: '$(dockerRegistryServiceConnection)'
-              repository: '$(backendRepository)'
-              command: 'buildAndPush'
-              Dockerfile: 'ecommerce-backend/Dockerfile'
-              buildContext: 'ecommerce-backend'
-              tags: |
-                $(Build.BuildId)
-                latest
+              azureSubscription: '$(azureServiceConnection)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                echo "=== Building Backend Image ==="
+                docker build \
+                  -t $(acrLoginServer)/$(backendRepository):$(Build.BuildId) \
+                  -t $(acrLoginServer)/$(backendRepository):latest \
+                  -f ecommerce-backend/Dockerfile \
+                  ecommerce-backend/
 
-          # --- Step 3: Build & Push Frontend Docker Image ---
-          - task: Docker@2
+                echo "=== Pushing Backend Image ==="
+                docker push $(acrLoginServer)/$(backendRepository):$(Build.BuildId)
+                docker push $(acrLoginServer)/$(backendRepository):latest
+                echo "✅ Backend pushed → $(acrLoginServer)/$(backendRepository):$(Build.BuildId)"
+
+          # --- Step 4: Build & Push Frontend Docker Image ---
+          - task: AzureCLI@2
             displayName: 'Build and Push Frontend Image to ACR'
             inputs:
-              containerRegistry: '$(dockerRegistryServiceConnection)'
-              repository: '$(frontendRepository)'
-              command: 'buildAndPush'
-              Dockerfile: 'html/Dockerfile'
-              buildContext: 'html'
-              tags: |
-                $(Build.BuildId)
-                latest
+              azureSubscription: '$(azureServiceConnection)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                echo "=== Building Frontend Image ==="
+                docker build \
+                  -t $(acrLoginServer)/$(frontendRepository):$(Build.BuildId) \
+                  -t $(acrLoginServer)/$(frontendRepository):latest \
+                  -f html/Dockerfile \
+                  html/
+
+                echo "=== Pushing Frontend Image ==="
+                docker push $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)
+                docker push $(acrLoginServer)/$(frontendRepository):latest
+                echo "✅ Frontend pushed → $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)"
 
   # ============================================================
   # Stage 2: Release Stage (Continuous Deployment - CD)
@@ -74,7 +108,7 @@ stages:
           - script: |
               echo "📦 Build stage passed and images pushed to ACR!"
               echo "Image Tags:"
-              echo "  - Backend : $(backendRepository):$(Build.BuildId)"
-              echo "  - Frontend: $(frontendRepository):$(Build.BuildId)"
+              echo "  - Backend : $(acrLoginServer)/$(backendRepository):$(Build.BuildId)"
+              echo "  - Frontend: $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)"
               echo "Ready for Terraform and Azure Container Apps deployment."
             displayName: 'Deployment Placeholder'
