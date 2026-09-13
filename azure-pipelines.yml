@@ -10,10 +10,10 @@ pool:
 variables:
   # ARM Service Connection name (Project Settings → Service Connections)
   # This is the cross-tenant service connection you set up
-  azureServiceConnection: 'YOUR_ARM_SERVICE_CONNECTION_NAME'
+  azureServiceConnection: 'azure-subs-puffersoft'
 
   # ACR details — the registry you already created in your resource group
-  acrName: 'YOUR_ACR_NAME'                        # e.g. luxestoreacr  (no .azurecr.io)
+  acrName: 'acr-name'                        # e.g. luxestoreacr  (no .azurecr.io)
   acrLoginServer: '$(acrName).azurecr.io'         # full login server, derived automatically
 
   # Image repository names inside ACR
