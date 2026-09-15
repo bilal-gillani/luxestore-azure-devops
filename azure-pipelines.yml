@@ -162,3 +162,21 @@ stages:
             commandOptions: 'tfplan'
             environmentServiceNameAzureRM: '$(azureServiceConnection)'
             environmentAzureRmUseIdTokenGeneration: true
+
+        # --- Step 4: Initialize Database Schema, App User & Seed Data ---
+        - task: AzureCLI@2
+          displayName: 'Initialize & Seed Azure MySQL Database'
+          inputs:
+            azureSubscription: '$(azureServiceConnection)'
+            scriptType: bash
+            scriptLocation: inlineScript
+            inlineScript: |
+              set -euo pipefail
+              echo "=== Installing MySQL Client ==="
+              sudo apt-get update -qq && sudo apt-get install -y -qq default-mysql-client
+
+              echo "=== Executing Database Initialization Script ==="
+              chmod +x scripts/init-db.sh
+              ./scripts/init-db.sh "$(mysqlServerFqdn)" "$(mysqlAdminUsername)"
+          env:
+            MYSQL_ADMIN_PASSWORD: $(MYSQL_ADMIN_PASSWORD)
