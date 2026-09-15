@@ -1,5 +1,5 @@
 trigger:
-  - none
+  - main
 
 pool:
   vmImage: ubuntu-latest
@@ -11,7 +11,7 @@ variables:
   - group: 'luxestore-secrets'
 
   - name: azureServiceConnection
-    value: 'azure-subs-puffersoft'
+    value: 'azure-service-connection-name'
   
   - name: acrName
     value: 'acr-name'
