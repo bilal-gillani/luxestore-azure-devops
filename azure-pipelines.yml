@@ -139,7 +139,7 @@ stages:
             provider: 'azurerm'
             command: 'init'
             workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
-            backendServiceArm: 'azure-subs-puffersoft'
+            backendServiceArm: '$(azureServiceConnection)'
             backendAzureRmResourceGroupName: '$(tfStorageResourceGroup)'
             backendAzureRmStorageAccountName: '$(tfStorageAccount)'
             backendAzureRmContainerName: '$(tfStateContainer)'
@@ -151,7 +151,7 @@ stages:
             command: 'plan'
             workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
             commandOptions: '-out tfplan -var="resource_group_name=$(resourceGroupName)" -var="mysql_server_name=$(mysqlServerName)"'
-            environmentServiceNameAzureRM: 'azure-subs-puffersoft'
+            environmentServiceNameAzureRM: '$(azureServiceConnection)'
         # - task: TerraformTask@5
         #   displayName: 'Terraform Apply'
         #   inputs:
@@ -159,4 +159,4 @@ stages:
         #     command: 'apply'
         #     workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
         #     commandOptions: 'tfplan'
-        #     environmentServiceNameAzureRM: 'azure-subs-puffersoft'
+        #     environmentServiceNameAzureRM: '$(azureServiceConnection)'
