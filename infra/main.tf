@@ -55,6 +55,7 @@ resource "azurerm_container_app_environment" "env" {
   name                       = "cae-luxestore"
   location                   = data.azurerm_resource_group.rg.location
   resource_group_name        = data.azurerm_resource_group.rg.name
+  logs_destination           = "log-analytics"
   log_analytics_workspace_id = azurerm_log_analytics_workspace.law.id
 }
 
