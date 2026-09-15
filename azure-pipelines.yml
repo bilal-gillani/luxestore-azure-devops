@@ -152,6 +152,7 @@ stages:
             workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
             commandOptions: '-out tfplan -var="resource_group_name=$(resourceGroupName)" -var="mysql_server_name=$(mysqlServerName)"'
             environmentServiceNameAzureRM: '$(azureServiceConnection)'
+            environmentAzureRmUseIdTokenGeneration: true
         # - task: TerraformTask@5
         #   displayName: 'Terraform Apply'
         #   inputs:
@@ -160,3 +161,4 @@ stages:
         #     workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
         #     commandOptions: 'tfplan'
         #     environmentServiceNameAzureRM: '$(azureServiceConnection)'
+        #     environmentAzureRmUseIdTokenGeneration: true
