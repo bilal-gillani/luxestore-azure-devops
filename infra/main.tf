@@ -1,13 +1,28 @@
+# Reference the existing Resource Group
+data "azurerm_resource_group" "rg" {
+  name = var.resource_group_name
+}
+
 # Reference the existing Azure Database for MySQL Flexible Server
 data "azurerm_mysql_flexible_server" "mysql" {
   name                = var.mysql_server_name
-  resource_group_name = var.resource_group_name
+  resource_group_name = data.azurerm_resource_group.rg.name
 }
+
+# Reference the existing Azure Container Registry
+data "azurerm_container_registry" "acr" {
+  name                = var.acr_name
+  resource_group_name = data.azurerm_resource_group.rg.name
+}
+
+# ------------------------------------------------------------------------------
+# MySQL Logical Database & Firewall Rules
+# ------------------------------------------------------------------------------
 
 # Create the logical database (ecommerce_store)
 resource "azurerm_mysql_flexible_database" "ecommerce" {
   name                = var.database_name
-  resource_group_name = var.resource_group_name
+  resource_group_name = data.azurerm_resource_group.rg.name
   server_name         = data.azurerm_mysql_flexible_server.mysql.name
   charset             = "utf8mb4"
   collation           = "utf8mb4_unicode_ci"
@@ -16,8 +31,198 @@ resource "azurerm_mysql_flexible_database" "ecommerce" {
 # Allow Azure Services and hosted agents to connect (0.0.0.0 - 0.0.0.0)
 resource "azurerm_mysql_flexible_server_firewall_rule" "allow_azure_services" {
   name                = "AllowAzureServices"
-  resource_group_name = var.resource_group_name
+  resource_group_name = data.azurerm_resource_group.rg.name
   server_name         = data.azurerm_mysql_flexible_server.mysql.name
   start_ip_address    = "0.0.0.0"
   end_ip_address      = "0.0.0.0"
+}
+
+# ------------------------------------------------------------------------------
+# Monitoring & Azure Container Apps Environment
+# ------------------------------------------------------------------------------
+
+# Log Analytics Workspace for Container Apps diagnostic and console logs
+resource "azurerm_log_analytics_workspace" "law" {
+  name                = "log-analytics-workspace-name"
+  location            = data.azurerm_resource_group.rg.location
+  resource_group_name = data.azurerm_resource_group.rg.name
+  sku                 = "PerGB2018"
+  retention_in_days   = 30
+}
+
+# Shared Azure Container Apps Environment
+resource "azurerm_container_app_environment" "env" {
+  name                       = "cae-luxestore"
+  location                   = data.azurerm_resource_group.rg.location
+  resource_group_name        = data.azurerm_resource_group.rg.name
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.law.id
+}
+
+# ------------------------------------------------------------------------------
+# Managed Identity & ACR Role Assignment
+# ------------------------------------------------------------------------------
+
+# User-Assigned Managed Identity for Container Apps to authenticate with ACR
+resource "azurerm_user_assigned_identity" "aca_identity" {
+  name                = "uai-luxestore-aca"
+  location            = data.azurerm_resource_group.rg.location
+  resource_group_name = data.azurerm_resource_group.rg.name
+}
+
+# Grant AcrPull role to the User-Assigned Identity on the ACR
+resource "azurerm_role_assignment" "acr_pull" {
+  scope                = data.azurerm_container_registry.acr.id
+  role_definition_name = "AcrPull"
+  principal_id         = azurerm_user_assigned_identity.aca_identity.principal_id
+}
+
+# ------------------------------------------------------------------------------
+# Backend Container App (Node.js 20 Express REST API - Internal Ingress)
+# ------------------------------------------------------------------------------
+resource "azurerm_container_app" "backend" {
+  name                         = "backend"
+  container_app_environment_id = azurerm_container_app_environment.env.id
+  resource_group_name          = data.azurerm_resource_group.rg.name
+  revision_mode                = "Single"
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.aca_identity.id]
+  }
+
+  registry {
+    server   = data.azurerm_container_registry.acr.login_server
+    identity = azurerm_user_assigned_identity.aca_identity.id
+  }
+
+  ingress {
+    external_enabled = false
+    target_port      = 3000
+    transport        = "auto"
+    traffic_weight {
+      latest_revision = true
+      percentage      = 100
+    }
+  }
+
+  secret {
+    name  = "db-password"
+    value = var.db_password
+  }
+
+  secret {
+    name  = "jwt-secret"
+    value = var.jwt_secret
+  }
+
+  template {
+    min_replicas = 1
+    max_replicas = 3
+
+    container {
+      name   = "backend"
+      image  = "${data.azurerm_container_registry.acr.login_server}/${var.backend_image_repository}:${var.image_tag}"
+      cpu    = 0.5
+      memory = "1.0Gi"
+
+      env {
+        name  = "PORT"
+        value = "3000"
+      }
+      env {
+        name  = "NODE_ENV"
+        value = "production"
+      }
+      env {
+        name  = "DB_HOST"
+        value = data.azurerm_mysql_flexible_server.mysql.fqdn
+      }
+      env {
+        name  = "DB_PORT"
+        value = "3306"
+      }
+      env {
+        name  = "DB_USER"
+        value = var.db_user
+      }
+      env {
+        name        = "DB_PASSWORD"
+        secret_name = "db-password"
+      }
+      env {
+        name  = "DB_NAME"
+        value = azurerm_mysql_flexible_database.ecommerce.name
+      }
+      env {
+        name        = "JWT_SECRET"
+        secret_name = "jwt-secret"
+      }
+      env {
+        name  = "JWT_EXPIRES_IN"
+        value = "7d"
+      }
+      env {
+        name  = "CORS_ORIGIN"
+        value = "*"
+      }
+    }
+  }
+
+  depends_on = [
+    azurerm_role_assignment.acr_pull,
+    azurerm_mysql_flexible_database.ecommerce,
+    azurerm_mysql_flexible_server_firewall_rule.allow_azure_services
+  ]
+}
+
+# ------------------------------------------------------------------------------
+# Frontend Container App (Nginx 1.27 Static + Reverse Proxy - External Ingress)
+# ------------------------------------------------------------------------------
+resource "azurerm_container_app" "frontend" {
+  name                         = "frontend"
+  container_app_environment_id = azurerm_container_app_environment.env.id
+  resource_group_name          = data.azurerm_resource_group.rg.name
+  revision_mode                = "Single"
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.aca_identity.id]
+  }
+
+  registry {
+    server   = data.azurerm_container_registry.acr.login_server
+    identity = azurerm_user_assigned_identity.aca_identity.id
+  }
+
+  ingress {
+    external_enabled = true
+    target_port      = 80
+    transport        = "auto"
+    traffic_weight {
+      latest_revision = true
+      percentage      = 100
+    }
+  }
+
+  template {
+    min_replicas = 1
+    max_replicas = 3
+
+    container {
+      name   = "frontend"
+      image  = "${data.azurerm_container_registry.acr.login_server}/${var.frontend_image_repository}:${var.image_tag}"
+      cpu    = 0.25
+      memory = "0.5Gi"
+
+      env {
+        name  = "BACKEND_URL"
+        value = "http://backend"
+      }
+    }
+  }
+
+  depends_on = [
+    azurerm_role_assignment.acr_pull,
+    azurerm_container_app.backend
+  ]
 }

@@ -150,7 +150,7 @@ stages:
             provider: 'azurerm'
             command: 'plan'
             workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
-            commandOptions: '-out tfplan -var="resource_group_name=$(resourceGroupName)" -var="mysql_server_name=$(mysqlServerName)"'
+            commandOptions: '-out tfplan -var="resource_group_name=$(resourceGroupName)" -var="mysql_server_name=$(mysqlServerName)" -var="acr_name=$(acrName)" -var="image_tag=$(Build.BuildId)"'
             environmentServiceNameAzureRM: '$(azureServiceConnection)'
             environmentAzureRmUseIdTokenGeneration: true
         - task: TerraformTask@5
@@ -180,3 +180,22 @@ stages:
               ./scripts/init-db.sh "$(mysqlServerFqdn)" "$(mysqlAdminUsername)"
           env:
             MYSQL_ADMIN_PASSWORD: $(MYSQL_ADMIN_PASSWORD)
+
+        # --- Step 5: Output Application URLs & Verify Deployment ---
+        - task: AzureCLI@2
+          displayName: 'Verify & Output Application URL'
+          inputs:
+            azureSubscription: '$(azureServiceConnection)'
+            scriptType: bash
+            scriptLocation: inlineScript
+            inlineScript: |
+              set -euo pipefail
+              echo "=== Retrieving Container App URLs ==="
+              FRONTEND_FQDN=$(az containerapp show --resource-group "$(resourceGroupName)" --name frontend --query "properties.configuration.ingress.fqdn" -o tsv || echo "")
+              BACKEND_FQDN=$(az containerapp show --resource-group "$(resourceGroupName)" --name backend --query "properties.configuration.ingress.fqdn" -o tsv || echo "")
+
+              echo "=================================================="
+              echo "🚀 Deployment Successful!"
+              echo "🌐 Frontend Public URL: https://$FRONTEND_FQDN"
+              echo "⚙️ Backend Internal FQDN: $BACKEND_FQDN"
+              echo "=================================================="
