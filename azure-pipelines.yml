@@ -8,17 +8,41 @@ pool:
 # Pipeline Variables
 # ============================================================
 variables:
-  # ARM Service Connection name (Project Settings → Service Connections)
-  # This is the cross-tenant service connection you set up
-  azureServiceConnection: 'azure-subs-puffersoft'
+  - group: 'luxestore-secrets'
 
-  # ACR details — the registry you already created in your resource group
-  acrName: 'acr-name'                        # e.g. luxestoreacr  (no .azurecr.io)
-  acrLoginServer: '$(acrName).azurecr.io'         # full login server, derived automatically
+  - name: azureServiceConnection
+    value: 'azure-subs-puffersoft'
+  
+  - name: acrName
+    value: 'acr-name'
+  - name: acrLoginServer
+    value: '$(acrName).azurecr.io'
 
   # Image repository names inside ACR
-  backendRepository: 'luxestore-backend'
-  frontendRepository: 'luxestore-frontend'
+  - name: backendRepository
+    value: 'luxestore-backend'
+  - name: frontendRepository
+    value: 'luxestore-frontend'
+
+  # Azure Infrastructure & Database Variables
+  - name: resourceGroupName
+    value: 'rg-name'
+  - name: mysqlServerName
+    value: 'mysql-server-name'
+  - name: mysqlServerFqdn
+    value: '$(mysqlServerName).mysql.database.azure.com'
+  - name: mysqlAdminUsername
+    value: 'sqladmin'
+
+  # Remote Terraform State in Azure Storage
+  - name: tfStorageResourceGroup
+    value: 'tf-storage-rg-name'
+  - name: tfStorageAccount
+    value: 'tf-storage-account-name'
+  - name: tfStateContainer
+    value: 'tfstate'
+  - name: tfStateKey
+    value: 'tf-state-key'
 
 stages:
   # ============================================================
@@ -105,10 +129,34 @@ stages:
       - job: DeployJob
         displayName: 'Deployment Job'
         steps:
-          - script: |
-              echo "📦 Build stage passed and images pushed to ACR!"
-              echo "Image Tags:"
-              echo "  - Backend : $(acrLoginServer)/$(backendRepository):$(Build.BuildId)"
-              echo "  - Frontend: $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)"
-              echo "Ready for Terraform and Azure Container Apps deployment."
-            displayName: 'Deployment Placeholder'
+        - task: TerraformInstaller@1
+          displayName: 'Install Terraform'
+          inputs:
+            terraformVersion: 'latest'
+        - task: TerraformTask@5
+          displayName: 'Terraform Init'
+          inputs:
+            provider: 'azurerm'
+            command: 'init'
+            workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+            backendServiceArm: 'azure-subs-puffersoft'
+            backendAzureRmResourceGroupName: '$(tfStorageResourceGroup)'
+            backendAzureRmStorageAccountName: '$(tfStorageAccount)'
+            backendAzureRmContainerName: '$(tfStateContainer)'
+            backendAzureRmKey: '$(tfStateKey)'
+        - task: TerraformTask@5
+          displayName: 'Terraform Plan'
+          inputs:
+            provider: 'azurerm'
+            command: 'plan'
+            workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+            commandOptions: '-out tfplan -var="resource_group_name=$(resourceGroupName)" -var="mysql_server_name=$(mysqlServerName)"'
+            environmentServiceNameAzureRM: 'azure-subs-puffersoft'
+        # - task: TerraformTask@5
+        #   displayName: 'Terraform Apply'
+        #   inputs:
+        #     provider: 'azurerm'
+        #     command: 'apply'
+        #     workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+        #     commandOptions: 'tfplan'
+        #     environmentServiceNameAzureRM: 'azure-subs-puffersoft'
