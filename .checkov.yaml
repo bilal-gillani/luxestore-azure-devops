@@ -57,12 +57,13 @@ skip-check:
 # ------------------------------------------------------------------------------
 # Output configuration
 # ------------------------------------------------------------------------------
-# Output format: cli (human readable in pipeline logs)
-output: cli
-
-# Show only failed checks (reduce log noise)
+# compact: true  → shows only FAILED checks in logs (reduces noise in CI).
+#                  Passed and skipped checks are still counted in the summary line.
+# compact: false → shows ALL checks (passed + failed + skipped) per resource.
+#                  Useful for auditing exactly what Checkov evaluated.
+#                  Toggle to false temporarily to see the full evaluation list.
 compact: true
 
-# Exit code 1 on any failed check (enforces the gate)
-# Note: Set to true for strict mode; false for soft-fail (advisory only)
+# Exit code 1 on any failed check (enforces the gate).
+# Set to true to make Checkov advisory-only (report but don't block pipeline).
 soft-fail: false
