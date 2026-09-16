@@ -150,7 +150,7 @@ stages:
             provider: 'azurerm'
             command: 'plan'
             workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
-            commandOptions: '-out tfplan -var="resource_group_name=$(resourceGroupName)" -var="mysql_server_name=$(mysqlServerName)" -var="acr_name=$(acrName)" -var="image_tag=$(Build.BuildId)"'
+            commandOptions: '-out tfplan -var="resource_group_name=$(resourceGroupName)" -var="mysql_server_name=$(mysqlServerName)" -var="db_password=$(APP_DB_PASSWORD)" -var="acr_name=$(acrName)" -var="jwt_secret=$(JWT_SECRET)" -var="image_tag=$(Build.BuildId)"'
             environmentServiceNameAzureRM: '$(azureServiceConnection)'
             environmentAzureRmUseIdTokenGeneration: true
         - task: TerraformTask@5

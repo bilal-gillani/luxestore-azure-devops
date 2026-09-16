@@ -49,13 +49,11 @@ variable "db_user" {
 variable "db_password" {
   type        = string
   description = "The application database password."
-  default     = "hello123@"
   sensitive   = true
 }
 
 variable "jwt_secret" {
   type        = string
   description = "JWT secret key for backend authentication token signing."
-  default     = "super_secret_jwt_key_luxestore_869486198641@"
   sensitive   = true
 }
