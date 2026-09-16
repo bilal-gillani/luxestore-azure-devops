@@ -1,0 +1,31 @@
+# ==============================================================================
+# .gitleaks.toml — Gitleaks Configuration for LuxeStore
+# Purpose: Tune secret scanning to prevent false positives while keeping
+#          high-confidence detection for real secrets.
+# ==============================================================================
+
+title = "LuxeStore Gitleaks Config"
+
+# ------------------------------------------------------------------------------
+# Allowlist: Paths to exclude from scanning
+# (non-sensitive files or known-safe patterns)
+# ------------------------------------------------------------------------------
+[allowlist]
+  description = "LuxeStore known safe exclusions"
+
+  # Exclude git internals and lock files
+  paths = [
+    '''.git/''',
+    '''infra/.terraform.lock.hcl''',
+    '''infra/.terraform/''',
+    '''ecommerce-backend/node_modules/''',
+  ]
+
+  # Exclude known safe patterns across the whole repo:
+  # - Unsplash image URLs in seed.sql (contain long query strings with = signs)
+  # - Docker base image references
+  # - Azure resource IDs in comments/docs
+  regexes = [
+    '''https://images\.unsplash\.com/''',
+    '''FROM (node|nginx|mysql):[a-z0-9\.-]+-alpine''',
+  ]
