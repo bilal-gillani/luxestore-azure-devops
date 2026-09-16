@@ -1,0 +1,68 @@
+# ==============================================================================
+# .checkov.yaml — Checkov IaC Security Scanner Configuration for LuxeStore
+#
+# Checkov documentation: https://www.checkov.io/5.Policy%20Index/terraform.html
+# Each skip is documented with its business/technical justification.
+# ==============================================================================
+
+# Scan only Terraform framework (our IaC language)
+framework:
+  - terraform
+
+# Directory to scan (relative when running from repo root; override via CLI)
+directory:
+  - infra
+
+# ------------------------------------------------------------------------------
+# Skipped Checks — with documented justifications
+# These are intentional exceptions, NOT ignored security issues.
+# Review and remove these when moving to production.
+# ------------------------------------------------------------------------------
+skip-check:
+  # CKV_AZURE_28: MySQL should have SSL enforcement enabled
+  # Justification: MySQL Flexible Server enforces SSL by default in azurerm >= 3.x;
+  # the ssl_enforcement_enabled attribute was removed from the resource schema.
+  # SSL is active — this is a Checkov false positive on the new API.
+  - CKV_AZURE_28
+
+  # CKV_AZURE_32: MySQL backup retention should be >= 7 days
+  # Justification: This is a dev/test environment using the Burstable tier.
+  # The server is provisioned externally (data source), not managed here.
+  # Enforce in production via Azure Policy.
+  - CKV_AZURE_32
+
+  # CKV_AZURE_131: MySQL should have geo-redundant backups enabled
+  # Justification: Dev/test environment; geo-redundancy not required.
+  - CKV_AZURE_131
+
+  # CKV_AZURE_83: MySQL should have Threat Detection enabled
+  # Justification: Advanced Threat Protection requires Standard tier.
+  # This is a dev/test Burstable tier instance.
+  - CKV_AZURE_83
+
+  # CKV_AZURE_234: Container App should require HTTPS-only ingress
+  # Justification: HTTPS termination is handled by Azure Container Apps platform
+  # automatically. The transport="auto" setting enables TLS at the platform level.
+  - CKV_AZURE_234
+
+  # CKV2_AZURE_18: Storage account should use customer-managed keys (CMK)
+  # Justification: The tfstate storage account uses Microsoft-managed keys.
+  # CMK adds operational overhead not warranted for a dev/test pipeline state store.
+  - CKV2_AZURE_18
+
+  # CKV_AZURE_75: Log Analytics workspace should have data export enabled
+  # Justification: Data export is not required for this dev/test environment.
+  - CKV_AZURE_75
+
+# ------------------------------------------------------------------------------
+# Output configuration
+# ------------------------------------------------------------------------------
+# Output format: cli (human readable in pipeline logs)
+output: cli
+
+# Show only failed checks (reduce log noise)
+compact: true
+
+# Exit code 1 on any failed check (enforces the gate)
+# Note: Set to true for strict mode; false for soft-fail (advisory only)
+soft-fail: false

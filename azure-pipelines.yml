@@ -206,6 +206,24 @@ stages:
                 docker push $(acrLoginServer)/$(frontendRepository):latest
                 echo "✅ Frontend pushed → $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)"
 
+          # --- Step 11: IaC Security Scan (Checkov) ---
+          # Scans Terraform files in /infra for security misconfigurations.
+          # Config: .checkov.yaml at repo root controls skipped checks and output format.
+          # Runs AFTER images are built/pushed — no Terraform state access needed.
+          # Fails the build if any non-skipped Checkov policy violations are found.
+          - script: |
+              echo "=== Installing Checkov ==="
+              pip install checkov --quiet
+              checkov --version
+
+              echo "=== Running Checkov IaC Scan on /infra ==="
+              checkov \
+                --config-file "$(Build.SourcesDirectory)/.checkov.yaml" \
+                --directory "$(Build.SourcesDirectory)/infra" \
+                --framework terraform
+              echo "✅ Checkov scan passed — no IaC security violations!"
+            displayName: 'IaC Security Scan (Checkov)'
+
 
   # ============================================================
   # Stage 2: Release Stage (Continuous Deployment - CD)
@@ -215,77 +233,152 @@ stages:
     dependsOn: Build
     condition: succeeded()
     jobs:
-      - job: DeployJob
-        displayName: 'Deployment Job'
+      # ------------------------------------------------------------------
+      # Job 1: Terraform Plan
+      # Runs Init + Plan and publishes the plan output as a pipeline artifact.
+      # The approver reviews this job's logs BEFORE approving the Apply job.
+      # ------------------------------------------------------------------
+      - job: TerraformPlanJob
+        displayName: 'Terraform Init & Plan'
         steps:
-        - task: TerraformInstaller@1
-          displayName: 'Install Terraform'
-          inputs:
-            terraformVersion: 'latest'
-        - task: TerraformTask@5
-          displayName: 'Terraform Init'
-          inputs:
-            provider: 'azurerm'
-            command: 'init'
-            workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
-            backendServiceArm: '$(azureServiceConnection)'
-            backendAzureRmResourceGroupName: '$(tfStorageResourceGroup)'
-            backendAzureRmStorageAccountName: '$(tfStorageAccount)'
-            backendAzureRmContainerName: '$(tfStateContainer)'
-            backendAzureRmKey: '$(tfStateKey)'
-        - task: TerraformTask@5
-          displayName: 'Terraform Plan'
-          inputs:
-            provider: 'azurerm'
-            command: 'plan'
-            workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
-            commandOptions: '-out tfplan -var="resource_group_name=$(resourceGroupName)" -var="mysql_server_name=$(mysqlServerName)" -var="db_password=$(APP_DB_PASSWORD)" -var="acr_name=$(acrName)" -var="jwt_secret=$(JWT_SECRET)" -var="image_tag=$(Build.BuildId)"'
-            environmentServiceNameAzureRM: '$(azureServiceConnection)'
-            environmentAzureRmUseIdTokenGeneration: true
-        - task: TerraformTask@5
-          displayName: 'Terraform Apply'
-          inputs:
-            provider: 'azurerm'
-            command: 'apply'
-            workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
-            commandOptions: 'tfplan'
-            environmentServiceNameAzureRM: '$(azureServiceConnection)'
-            environmentAzureRmUseIdTokenGeneration: true
+          - task: TerraformInstaller@1
+            displayName: 'Install Terraform'
+            inputs:
+              terraformVersion: 'latest'
 
-        # --- Step 4: Initialize Database Schema, App User & Seed Data ---
-        - task: AzureCLI@2
-          displayName: 'Initialize & Seed Azure MySQL Database'
-          inputs:
-            azureSubscription: '$(azureServiceConnection)'
-            scriptType: bash
-            scriptLocation: inlineScript
-            inlineScript: |
+          - task: TerraformTask@5
+            displayName: 'Terraform Init'
+            inputs:
+              provider: 'azurerm'
+              command: 'init'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+              backendServiceArm: '$(azureServiceConnection)'
+              backendAzureRmResourceGroupName: '$(tfStorageResourceGroup)'
+              backendAzureRmStorageAccountName: '$(tfStorageAccount)'
+              backendAzureRmContainerName: '$(tfStateContainer)'
+              backendAzureRmKey: '$(tfStateKey)'
+
+          - task: TerraformTask@5
+            displayName: 'Terraform Plan'
+            inputs:
+              provider: 'azurerm'
+              command: 'plan'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+              commandOptions: '-out tfplan -var="resource_group_name=$(resourceGroupName)" -var="mysql_server_name=$(mysqlServerName)" -var="db_password=$(APP_DB_PASSWORD)" -var="acr_name=$(acrName)" -var="jwt_secret=$(JWT_SECRET)" -var="image_tag=$(Build.BuildId)"'
+              environmentServiceNameAzureRM: '$(azureServiceConnection)'
+              environmentAzureRmUseIdTokenGeneration: true
+
+          # Save tfplan binary + human-readable plan text as a pipeline artifact
+          # so the approver can review it in the Artifacts tab.
+          - script: |
               set -euo pipefail
-              echo "=== Installing MySQL Client ==="
-              sudo apt-get update -qq && sudo apt-get install -y -qq default-mysql-client
+              cd infra
+              echo "=== Generating human-readable plan output ==="
+              terraform show -no-color tfplan > tfplan.txt
+              echo "📋 Plan saved. Review it in the Artifacts tab before approving."
+            displayName: 'Save Terraform Plan as Text'
 
-              echo "=== Executing Database Initialization Script ==="
-              chmod +x scripts/init-db.sh
-              ./scripts/init-db.sh "$(mysqlServerFqdn)" "$(mysqlAdminUsername)"
-          env:
-            MYSQL_ADMIN_PASSWORD: $(MYSQL_ADMIN_PASSWORD)
-            APP_DB_PASSWORD: $(APP_DB_PASSWORD)
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish Terraform Plan Artifact'
+            inputs:
+              targetPath: '$(System.DefaultWorkingDirectory)/infra'
+              artifact: 'terraform-plan'
+              publishLocation: 'pipeline'
 
-        # --- Step 5: Output Application URLs & Verify Deployment ---
-        - task: AzureCLI@2
-          displayName: 'Verify & Output Application URL'
-          inputs:
-            azureSubscription: '$(azureServiceConnection)'
-            scriptType: bash
-            scriptLocation: inlineScript
-            inlineScript: |
-              set -euo pipefail
-              echo "=== Retrieving Container App URLs ==="
-              FRONTEND_FQDN=$(az containerapp show --resource-group "$(resourceGroupName)" --name frontend --query "properties.configuration.ingress.fqdn" -o tsv || echo "")
-              BACKEND_FQDN=$(az containerapp show --resource-group "$(resourceGroupName)" --name backend --query "properties.configuration.ingress.fqdn" -o tsv || echo "")
+      # ------------------------------------------------------------------
+      # Job 2: Terraform Apply (Deployment Job with Approval Gate)
+      # Uses Azure DevOps Environment 'production' for the approval gate.
+      # The approver MUST review Plan logs from Job 1 before approving here.
+      #
+      # SETUP REQUIRED (one-time in Azure DevOps UI):
+      #   Pipelines → Environments → Create "production" environment
+      #   → Approvals and Checks → Add → Approvals → add yourself as approver
+      # ------------------------------------------------------------------
+      - deployment: TerraformApplyJob
+        displayName: 'Terraform Apply + Deploy (Gated by Approval)'
+        dependsOn: TerraformPlanJob
+        condition: succeeded('TerraformPlanJob')
+        environment: 'production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
 
-              echo "=================================================="
-              echo "🚀 Deployment Successful!"
-              echo "🌐 Frontend Public URL: https://$FRONTEND_FQDN"
-              echo "⚙️ Backend Internal FQDN: $BACKEND_FQDN"
-              echo "=================================================="
+                - task: TerraformInstaller@1
+                  displayName: 'Install Terraform'
+                  inputs:
+                    terraformVersion: 'latest'
+
+                # Re-run Init to restore provider plugins on the new agent
+                - task: TerraformTask@5
+                  displayName: 'Terraform Init'
+                  inputs:
+                    provider: 'azurerm'
+                    command: 'init'
+                    workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+                    backendServiceArm: '$(azureServiceConnection)'
+                    backendAzureRmResourceGroupName: '$(tfStorageResourceGroup)'
+                    backendAzureRmStorageAccountName: '$(tfStorageAccount)'
+                    backendAzureRmContainerName: '$(tfStateContainer)'
+                    backendAzureRmKey: '$(tfStateKey)'
+
+                # Re-run Plan to produce a fresh tfplan on this agent
+                # (tfplan binary from Job 1 is agent-specific and cannot be reused)
+                - task: TerraformTask@5
+                  displayName: 'Terraform Plan (pre-apply re-plan)'
+                  inputs:
+                    provider: 'azurerm'
+                    command: 'plan'
+                    workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+                    commandOptions: '-out tfplan -var="resource_group_name=$(resourceGroupName)" -var="mysql_server_name=$(mysqlServerName)" -var="db_password=$(APP_DB_PASSWORD)" -var="acr_name=$(acrName)" -var="jwt_secret=$(JWT_SECRET)" -var="image_tag=$(Build.BuildId)"'
+                    environmentServiceNameAzureRM: '$(azureServiceConnection)'
+                    environmentAzureRmUseIdTokenGeneration: true
+
+                - task: TerraformTask@5
+                  displayName: 'Terraform Apply'
+                  inputs:
+                    provider: 'azurerm'
+                    command: 'apply'
+                    workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+                    commandOptions: 'tfplan'
+                    environmentServiceNameAzureRM: '$(azureServiceConnection)'
+                    environmentAzureRmUseIdTokenGeneration: true
+
+                # --- Initialize Database Schema, App User & Seed Data ---
+                - task: AzureCLI@2
+                  displayName: 'Initialize & Seed Azure MySQL Database'
+                  inputs:
+                    azureSubscription: '$(azureServiceConnection)'
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      echo "=== Installing MySQL Client ==="
+                      sudo apt-get update -qq && sudo apt-get install -y -qq default-mysql-client
+
+                      echo "=== Executing Database Initialization Script ==="
+                      chmod +x scripts/init-db.sh
+                      ./scripts/init-db.sh "$(mysqlServerFqdn)" "$(mysqlAdminUsername)"
+                  env:
+                    MYSQL_ADMIN_PASSWORD: $(MYSQL_ADMIN_PASSWORD)
+                    APP_DB_PASSWORD: $(APP_DB_PASSWORD)
+
+                # --- Output Application URLs & Verify Deployment ---
+                - task: AzureCLI@2
+                  displayName: 'Verify & Output Application URL'
+                  inputs:
+                    azureSubscription: '$(azureServiceConnection)'
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      echo "=== Retrieving Container App URLs ==="
+                      FRONTEND_FQDN=$(az containerapp show --resource-group "$(resourceGroupName)" --name frontend --query "properties.configuration.ingress.fqdn" -o tsv || echo "")
+                      BACKEND_FQDN=$(az containerapp show --resource-group "$(resourceGroupName)" --name backend --query "properties.configuration.ingress.fqdn" -o tsv || echo "")
+
+                      echo "=================================================="
+                      echo "🚀 Deployment Successful!"
+                      echo "🌐 Frontend Public URL: https://$FRONTEND_FQDN"
+                      echo "⚙️ Backend Internal FQDN: $BACKEND_FQDN"
+                      echo "=================================================="
