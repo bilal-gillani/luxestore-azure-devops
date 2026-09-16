@@ -1,6 +1,5 @@
 -- ================================================
 -- E-Commerce Store - Database Schema
--- Run this on the Database VM
 -- ================================================
 
 CREATE DATABASE IF NOT EXISTS ecommerce_store;

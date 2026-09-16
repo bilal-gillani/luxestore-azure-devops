@@ -15,12 +15,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 MYSQL_HOST="${1:-mysql-server-name.mysql.database.azure.com}"
 MYSQL_ADMIN_USER="${2:-sqladmin}"
-MYSQL_ADMIN_PWD="${MYSQL_ADMIN_PASSWORD:-${3:-}}"
-
-if [ -z "$MYSQL_ADMIN_PWD" ]; then
-  echo "❌ Error: MySQL admin password is required. Please set MYSQL_ADMIN_PASSWORD or pass as arg."
-  exit 1
-fi
+MYSQL_ADMIN_PWD="${MYSQL_ADMIN_PASSWORD:?MYSQL_ADMIN_PASSWORD is required}"
+APP_DB_PASSWORD="${APP_DB_PASSWORD:?APP_DB_PASSWORD is required}"
 
 echo "=================================================="
 echo "Connecting to MySQL Flexible Server: $MYSQL_HOST"
@@ -55,14 +51,19 @@ echo "✅ Schema applied! Tables created: $TABLES"
 # 3. Create Application User & Permissions (db/setup-user.sql)
 # ------------------------------------------------------------------------------
 echo "👉 Step 3: Setting up application user (ecommerce_user)..."
-run_admin_sql < "$REPO_ROOT/db/setup-user.sql"
-echo "✅ Application user (ecommerce_user) configured with full privileges on ecommerce_store."
+run_admin_sql <<SQL
+CREATE USER IF NOT EXISTS 'ecommerce_user'@'%' IDENTIFIED BY '$APP_DB_PASSWORD';
+ALTER USER 'ecommerce_user'@'%' IDENTIFIED BY '$APP_DB_PASSWORD';
+GRANT ALL PRIVILEGES ON ecommerce_store.* TO 'ecommerce_user'@'%';
+FLUSH PRIVILEGES;
+SQL
+echo "✅ Application user (ecommerce_user) configured."
 
 # ------------------------------------------------------------------------------
 # 4. Check & Apply Seed Data (db/seed.sql)
 # ------------------------------------------------------------------------------
 echo "👉 Step 4: Checking if seed data is already present..."
-EXISTING_USERS=$(run_admin_sql -D ecommerce_store -sse "SELECT COUNT(*) FROM users;" || echo "0")
+EXISTING_USERS=$(run_admin_sql -D ecommerce_store -sse "SELECT COUNT(*) FROM users;")
 
 if [ "$EXISTING_USERS" -eq "0" ]; then
   echo "Database is empty. Applying seed data (seed.sql)..."
@@ -76,7 +77,7 @@ fi
 # 5. Verify App User Connection & Query Data
 # ------------------------------------------------------------------------------
 echo "👉 Step 5: Testing connectivity and query permissions with application user (ecommerce_user)..."
-APP_VERIFY=$(MYSQL_PWD="hello123@" mysql \
+APP_VERIFY=$(MYSQL_PWD="$APP_DB_PASSWORD" mysql \
   --host="$MYSQL_HOST" \
   --user="ecommerce_user" \
   --ssl-mode=REQUIRED \

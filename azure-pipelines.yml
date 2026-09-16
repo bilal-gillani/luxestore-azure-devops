@@ -180,6 +180,7 @@ stages:
               ./scripts/init-db.sh "$(mysqlServerFqdn)" "$(mysqlAdminUsername)"
           env:
             MYSQL_ADMIN_PASSWORD: $(MYSQL_ADMIN_PASSWORD)
+            APP_DB_PASSWORD: $(APP_DB_PASSWORD)
 
         # --- Step 5: Output Application URLs & Verify Deployment ---
         - task: AzureCLI@2
