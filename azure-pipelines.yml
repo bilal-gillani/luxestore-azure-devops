@@ -226,18 +226,15 @@ stages:
 
 
   # ============================================================
-  # Stage 2: Release Stage (Continuous Deployment - CD)
+  # Stage 2: Terraform Plan
+  # Runs Init + Plan with no approval gate — output is fully visible
+  # to the approver before the approval prompt fires in Stage 3.
   # ============================================================
-  - stage: Deploy
-    displayName: 'Deploy (CD)'
+  - stage: TerraformPlan
+    displayName: 'Terraform Init & Plan'
     dependsOn: Build
     condition: succeeded()
     jobs:
-      # ------------------------------------------------------------------
-      # Job 1: Terraform Plan
-      # Runs Init + Plan and publishes the plan output as a pipeline artifact.
-      # The approver reviews this job's logs BEFORE approving the Apply job.
-      # ------------------------------------------------------------------
       - job: TerraformPlanJob
         displayName: 'Terraform Init & Plan'
         steps:
@@ -268,14 +265,15 @@ stages:
               environmentServiceNameAzureRM: '$(azureServiceConnection)'
               environmentAzureRmUseIdTokenGeneration: true
 
-          # Save tfplan binary + human-readable plan text as a pipeline artifact
-          # so the approver can review it in the Artifacts tab.
+          # Convert binary tfplan to human-readable text and publish as artifact.
+          # Approver opens the "terraform-plan" artifact → tfplan.txt to review
+          # exactly what will be created/changed/destroyed before approving.
           - script: |
               set -euo pipefail
               cd infra
               echo "=== Generating human-readable plan output ==="
               terraform show -no-color tfplan > tfplan.txt
-              echo "📋 Plan saved. Review it in the Artifacts tab before approving."
+              echo "📋 Plan saved to tfplan.txt — review in the Artifacts tab before approving."
             displayName: 'Save Terraform Plan as Text'
 
           - task: PublishPipelineArtifact@1
@@ -285,19 +283,23 @@ stages:
               artifact: 'terraform-plan'
               publishLocation: 'pipeline'
 
-      # ------------------------------------------------------------------
-      # Job 2: Terraform Apply (Deployment Job with Approval Gate)
-      # Uses Azure DevOps Environment 'production' for the approval gate.
-      # The approver MUST review Plan logs from Job 1 before approving here.
-      #
-      # SETUP REQUIRED (one-time in Azure DevOps UI):
-      #   Pipelines → Environments → Create "production" environment
-      #   → Approvals and Checks → Add → Approvals → add yourself as approver
-      # ------------------------------------------------------------------
+  # ============================================================
+  # Stage 3: Terraform Apply + Deploy
+  # The 'production' environment approval gate fires at stage ENTRY —
+  # at this point Stage 2 logs and the terraform-plan artifact are
+  # fully visible to the approver. Approve → Apply runs.
+  #
+  # SETUP REQUIRED (one-time in Azure DevOps UI):
+  #   Pipelines → Environments → New environment → name: "production"
+  #   → Approvals and checks → + → Approvals → add approver(s) → Save
+  # ============================================================
+  - stage: TerraformApply
+    displayName: 'Terraform Apply & Deploy (Gated)'
+    dependsOn: TerraformPlan
+    condition: succeeded()
+    jobs:
       - deployment: TerraformApplyJob
-        displayName: 'Terraform Apply + Deploy (Gated by Approval)'
-        dependsOn: TerraformPlanJob
-        condition: succeeded('TerraformPlanJob')
+        displayName: 'Terraform Apply + DB Init + Verify'
         environment: 'production'
         strategy:
           runOnce:
@@ -310,7 +312,8 @@ stages:
                   inputs:
                     terraformVersion: 'latest'
 
-                # Re-run Init to restore provider plugins on the new agent
+                # Re-run Init — each stage runs on a fresh agent; provider
+                # plugins from Stage 2 are not available here.
                 - task: TerraformTask@5
                   displayName: 'Terraform Init'
                   inputs:
@@ -323,8 +326,9 @@ stages:
                     backendAzureRmContainerName: '$(tfStateContainer)'
                     backendAzureRmKey: '$(tfStateKey)'
 
-                # Re-run Plan to produce a fresh tfplan on this agent
-                # (tfplan binary from Job 1 is agent-specific and cannot be reused)
+                # Re-run Plan to produce a fresh tfplan binary on this agent.
+                # The tfplan binary from Stage 2 is agent-specific and cannot
+                # be transferred. The text artifact (tfplan.txt) was for review only.
                 - task: TerraformTask@5
                   displayName: 'Terraform Plan (pre-apply re-plan)'
                   inputs:
@@ -380,5 +384,5 @@ stages:
                       echo "=================================================="
                       echo "🚀 Deployment Successful!"
                       echo "🌐 Frontend Public URL: https://$FRONTEND_FQDN"
-                      echo "⚙️ Backend Internal FQDN: $BACKEND_FQDN"
+                      echo "⚙️  Backend Internal FQDN: $BACKEND_FQDN"
                       echo "=================================================="
