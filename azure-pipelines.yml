@@ -130,8 +130,10 @@ stages:
 
           # --- Step 6: Trivy Scan — Backend Image ---
           # Scans OS packages and Node.js packages inside the built image.
-          # Fails the build if any CRITICAL vulnerabilities are found.
+          # set -euo pipefail is REQUIRED: without it, bash swallows Trivy's
+          # exit code 1 and the trailing echo exits 0 — making the step pass falsely.
           - script: |
+              set -euo pipefail
               echo "=== Scanning Backend Image with Trivy ==="
               trivy image \
                 --severity CRITICAL,HIGH \
@@ -140,7 +142,7 @@ stages:
                 --ignorefile "$(Build.SourcesDirectory)/.trivyignore" \
                 --format table \
                 $(acrLoginServer)/$(backendRepository):$(Build.BuildId)
-              echo "✅ Trivy backend scan passed!"
+              echo "✅ Trivy backend scan passed — no fixable HIGH/CRITICAL vulnerabilities!"
             displayName: 'Trivy Scan — Backend Image'
 
           # --- Step 7: Push Backend Image to ACR (Only if Scan Passed) ---
@@ -174,7 +176,10 @@ stages:
 
           # --- Step 9: Trivy Scan — Frontend Image ---
           # Scans OS packages inside the Nginx Alpine image.
+          # set -euo pipefail is REQUIRED: without it, bash swallows Trivy's
+          # exit code 1 and the trailing echo exits 0 — making the step pass falsely.
           - script: |
+              set -euo pipefail
               echo "=== Scanning Frontend Image with Trivy ==="
               trivy image \
                 --severity CRITICAL,HIGH \
@@ -183,7 +188,7 @@ stages:
                 --ignorefile "$(Build.SourcesDirectory)/.trivyignore" \
                 --format table \
                 $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)
-              echo "✅ Trivy frontend scan passed!"
+              echo "✅ Trivy frontend scan passed — no fixable HIGH/CRITICAL vulnerabilities!"
             displayName: 'Trivy Scan — Frontend Image'
 
           # --- Step 10: Push Frontend Image to ACR (Only if Scan Passed) ---
