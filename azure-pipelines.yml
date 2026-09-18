@@ -517,6 +517,16 @@ stages:
                 echo "   URL tested: $TEST_URL"
                 echo "=================================================="
 
+          # Re-export isBootstrap so TrafficSwitch can read it from SmokeTests directly.
+          # Azure DevOps stage condition expressions cannot reliably resolve outputs
+          # from non-direct dependency stages (returns Null). By re-exporting here,
+          # TrafficSwitch reads from its direct dependency (SmokeTests) instead.
+          - script: |
+              echo "##vso[task.setvariable variable=isBootstrap;isOutput=true]$(isBootstrap)"
+              echo "Passed through isBootstrap=$(isBootstrap) to TrafficSwitch stage."
+            name: PassThrough
+            displayName: 'Pass Through Bootstrap Flag'
+
   # ============================================================
   # Stage 5: Traffic Switch (Production Approval Gate)
   # SKIPPED on bootstrap (isBootstrap=true) — green is already live at 100%.
@@ -536,10 +546,13 @@ stages:
       - TerraformPlan
       - SmokeTests
     # Skip entirely on bootstrap: green is already at 100%, nothing to switch.
+    # Reads isBootstrap from SmokeTests (direct dependency) not TerraformPlan —
+    # stage condition expressions cannot resolve outputs from non-direct dependency
+    # stages (they return Null). SmokeTests re-exports the value via PassThrough step.
     condition: |
       and(
         succeeded('SmokeTests'),
-        eq(stageDependencies.TerraformPlan.TerraformPlanJob.outputs['FetchBlueRevisions.isBootstrap'], 'false')
+        eq(stageDependencies.SmokeTests.SmokeTestJob.outputs['PassThrough.isBootstrap'], 'false')
       )
     variables:
       backendBlueSuffix: $[ stageDependencies.TerraformPlan.TerraformPlanJob.outputs['FetchBlueRevisions.backendBlueSuffix'] ]
