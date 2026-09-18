@@ -552,7 +552,7 @@ stages:
     condition: |
       and(
         succeeded('SmokeTests'),
-        eq(stageDependencies.SmokeTests.SmokeTestJob.outputs['PassThrough.isBootstrap'], 'false')
+        eq(dependencies.TerraformPlan.outputs['TerraformPlanJob.FetchBlueRevisions.isBootstrap'], 'false')
       )
     variables:
       backendBlueSuffix: $[ stageDependencies.TerraformPlan.TerraformPlanJob.outputs['FetchBlueRevisions.backendBlueSuffix'] ]
