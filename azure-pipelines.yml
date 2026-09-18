@@ -451,8 +451,10 @@ stages:
   # ============================================================
   - stage: SmokeTests
     displayName: 'Smoke Tests (Green Revision)'
-    dependsOn: DeployGreen
-    condition: succeeded()
+    dependsOn:
+      - TerraformPlan   # required: stageDependencies only resolves outputs from directly-listed stages
+      - DeployGreen
+    condition: succeeded('DeployGreen')
     variables:
       isBootstrap: $[ stageDependencies.TerraformPlan.TerraformPlanJob.outputs['FetchBlueRevisions.isBootstrap'] ]
     jobs:
