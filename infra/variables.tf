@@ -57,3 +57,43 @@ variable "jwt_secret" {
   description = "JWT secret key for backend authentication token signing."
   sensitive   = true
 }
+
+# ------------------------------------------------------------------------------
+# Blue-Green Deployment Variables
+# ------------------------------------------------------------------------------
+
+variable "is_initial_deployment" {
+  type        = bool
+  description = "True on first pipeline run when no blue revision exists yet. Switches traffic_weight to latest_revision=true mode instead of named revision suffixes."
+  default     = false
+}
+
+variable "green_revision_suffix" {
+  type        = string
+  description = "Suffix for the new green (staging) revision being deployed. Format: v-{Build.BuildId}. Must start with a letter."
+  default     = "v-initial"
+}
+
+variable "backend_blue_revision_suffix" {
+  type        = string
+  description = "Suffix of the currently live (blue) backend revision. Fetched from Azure CLI before Terraform Plan. Unused when is_initial_deployment=true."
+  default     = "none"
+}
+
+variable "frontend_blue_revision_suffix" {
+  type        = string
+  description = "Suffix of the currently live (blue) frontend revision. Fetched from Azure CLI before Terraform Plan. Unused when is_initial_deployment=true."
+  default     = "none"
+}
+
+variable "blue_traffic_weight" {
+  type        = number
+  description = "Traffic % to route to the blue (live) revision. 100 during DeployGreen stage, 0 during TrafficSwitch stage."
+  default     = 100
+}
+
+variable "green_traffic_weight" {
+  type        = number
+  description = "Traffic % to route to the green (staging) revision. 0 during DeployGreen stage, 100 during TrafficSwitch stage."
+  default     = 0
+}

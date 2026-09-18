@@ -84,7 +84,10 @@ resource "azurerm_container_app" "backend" {
   name                         = "backend"
   container_app_environment_id = azurerm_container_app_environment.env.id
   resource_group_name          = data.azurerm_resource_group.rg.name
-  revision_mode                = "Single"
+
+  # Multiple mode: allows two revisions (blue + green) to coexist simultaneously.
+  # Blue = live production revision. Green = staging candidate at 0% traffic.
+  revision_mode = "Multiple"
 
   identity {
     type         = "UserAssigned"
@@ -100,9 +103,38 @@ resource "azurerm_container_app" "backend" {
     external_enabled = false
     target_port      = 3000
     transport        = "auto"
-    traffic_weight {
-      latest_revision = true
-      percentage      = 100
+
+    # ── BOOTSTRAP MODE (is_initial_deployment = true) ────────────────────────
+    # First pipeline run: no blue revision exists yet.
+    # Use latest_revision=true so the single created revision gets 100% traffic.
+    dynamic "traffic_weight" {
+      for_each = var.is_initial_deployment ? [1] : []
+      content {
+        latest_revision = true
+        percentage      = 100
+      }
+    }
+
+    # ── NORMAL MODE (is_initial_deployment = false, run 2+) ──────────────────
+    # Blue: existing live revision (fetched from Azure CLI before TF Plan).
+    # DeployGreen stage: blue=100%, green=0% — users unaffected.
+    # TrafficSwitch stage: blue=0%, green=100% — green goes live.
+    dynamic "traffic_weight" {
+      for_each = var.is_initial_deployment ? [] : [1]
+      content {
+        revision_suffix = var.backend_blue_revision_suffix
+        percentage      = var.blue_traffic_weight
+      }
+    }
+
+    # Green: newly deployed revision — always at 0% during DeployGreen stage.
+    # Backend is internal-only so no label URL is needed (frontend tests via proxy).
+    dynamic "traffic_weight" {
+      for_each = var.is_initial_deployment ? [] : [1]
+      content {
+        revision_suffix = var.green_revision_suffix
+        percentage      = var.green_traffic_weight
+      }
     }
   }
 
@@ -117,8 +149,11 @@ resource "azurerm_container_app" "backend" {
   }
 
   template {
-    min_replicas = 1
-    max_replicas = 3
+    # Explicitly name the revision being created on this pipeline run.
+    # Format: v-{Build.BuildId} e.g. v-5123 → full name: backend--v-5123
+    revision_suffix = var.green_revision_suffix
+    min_replicas    = 1
+    max_replicas    = 3
 
     container {
       name   = "backend"
@@ -176,6 +211,7 @@ resource "azurerm_container_app" "backend" {
   ]
 }
 
+
 # ------------------------------------------------------------------------------
 # Frontend Container App (Nginx 1.27 Static + Reverse Proxy - External Ingress)
 # ------------------------------------------------------------------------------
@@ -183,7 +219,9 @@ resource "azurerm_container_app" "frontend" {
   name                         = "frontend"
   container_app_environment_id = azurerm_container_app_environment.env.id
   resource_group_name          = data.azurerm_resource_group.rg.name
-  revision_mode                = "Single"
+
+  # Multiple mode: allows blue and green revisions to coexist simultaneously.
+  revision_mode = "Multiple"
 
   identity {
     type         = "UserAssigned"
@@ -199,15 +237,49 @@ resource "azurerm_container_app" "frontend" {
     external_enabled = true
     target_port      = 80
     transport        = "auto"
-    traffic_weight {
-      latest_revision = true
-      percentage      = 100
+
+    # ── BOOTSTRAP MODE (is_initial_deployment = true) ────────────────────────
+    # First pipeline run: no blue revision exists yet.
+    # Use latest_revision=true so the single created revision gets 100% traffic.
+    dynamic "traffic_weight" {
+      for_each = var.is_initial_deployment ? [1] : []
+      content {
+        latest_revision = true
+        percentage      = 100
+      }
+    }
+
+    # ── NORMAL MODE (is_initial_deployment = false, run 2+) ──────────────────
+    # Blue: existing live revision receiving all user traffic.
+    # DeployGreen stage: blue=100%, green=0%.
+    # TrafficSwitch stage: blue=0%, green=100%.
+    dynamic "traffic_weight" {
+      for_each = var.is_initial_deployment ? [] : [1]
+      content {
+        revision_suffix = var.frontend_blue_revision_suffix
+        percentage      = var.blue_traffic_weight
+      }
+    }
+
+    # Green: staging revision at 0% public traffic during DeployGreen stage.
+    # The "green" label generates a dedicated public URL for smoke testing:
+    # https://frontend---green.{hash}.southindia.azurecontainerapps.io
+    dynamic "traffic_weight" {
+      for_each = var.is_initial_deployment ? [] : [1]
+      content {
+        revision_suffix = var.green_revision_suffix
+        percentage      = var.green_traffic_weight
+        label           = "green"
+      }
     }
   }
 
   template {
-    min_replicas = 1
-    max_replicas = 3
+    # Explicitly name the revision being created on this pipeline run.
+    # Format: v-{Build.BuildId} e.g. v-5123 → full name: frontend--v-5123
+    revision_suffix = var.green_revision_suffix
+    min_replicas    = 1
+    max_replicas    = 3
 
     container {
       name   = "frontend"
