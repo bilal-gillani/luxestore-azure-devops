@@ -220,10 +220,10 @@ stages:
           # Runs AFTER images are built/pushed — no Terraform state access needed.
           # Fails the build if any non-skipped Checkov policy violations are found.
           - script: |
+              set -euo pipefail
               echo "=== Installing Checkov ==="
               pip install checkov --quiet
               checkov --version
-
               echo "=== Running Checkov IaC Scan on /infra ==="
               checkov \
                 --config-file "$(Build.SourcesDirectory)/.checkov.yaml" \
