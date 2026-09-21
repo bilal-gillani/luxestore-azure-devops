@@ -1,7 +1,5 @@
 # ==============================================================================
-# .gitleaks.toml — Gitleaks Configuration for LuxeStore
-# Purpose: Tune secret scanning to prevent false positives while keeping
-#          high-confidence detection for real secrets.
+# .gitleaks.toml — Gitleaks Configuration 
 # ==============================================================================
 
 title = "LuxeStore Gitleaks Config"

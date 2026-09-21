@@ -59,6 +59,7 @@ stages:
           # Scans the full git history and working tree for leaked secrets.
           # Config: .gitleaks.toml at repo root handles allowlisted false positives.
           - script: |
+              set -euo pipefail
               echo "=== Running Gitleaks Secret Scanner ==="
               docker run --rm \
                 -v "$(Build.SourcesDirectory):/repo" \
