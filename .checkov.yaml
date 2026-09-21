@@ -1,5 +1,5 @@
 # ==============================================================================
-# .checkov.yaml — Checkov IaC Security Scanner Configuration for LuxeStore
+# .checkov.yaml — Checkov IaC Security Scanner Configuration
 #
 # Checkov documentation: https://www.checkov.io/5.Policy%20Index/terraform.html
 # Each skip is documented with its business/technical justification.
