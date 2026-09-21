@@ -54,6 +54,13 @@ stages:
       - job: BuildAndPushJob
         displayName: 'Security Scan, Build & Push Images'
         steps:
+          # Full history checkout — required for Gitleaks to scan all commits,
+          # not just the single commit fetched by Azure DevOps' default shallow clone.
+          # Without this, Gitleaks only sees 1 commit regardless of repo history size.
+          - checkout: self
+            fetchDepth: 0
+            clean: true
+
           # --- Step 1: Secret Scanning (Gitleaks) ---
           # Runs first — fail fast before any build happens.
           # Scans the full git history and working tree for leaked secrets.
@@ -147,18 +154,18 @@ stages:
               echo "✅ Trivy backend scan passed — no fixable HIGH/CRITICAL vulnerabilities!"
             displayName: 'Trivy Scan — Backend Image'
 
-          # --- Step 7: Push Backend Image to ACR (Only if Scan Passed) ---
-          - task: AzureCLI@2
-            displayName: 'Push Backend Image to ACR'
-            inputs:
-              azureSubscription: '$(azureServiceConnection)'
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: |
-                echo "=== Pushing Backend Image ==="
-                docker push $(acrLoginServer)/$(backendRepository):$(Build.BuildId)
-                docker push $(acrLoginServer)/$(backendRepository):latest
-                echo "✅ Backend pushed → $(acrLoginServer)/$(backendRepository):$(Build.BuildId)"
+          # # --- Step 7: Push Backend Image to ACR (Only if Scan Passed) ---
+          # - task: AzureCLI@2
+          #   displayName: 'Push Backend Image to ACR'
+          #   inputs:
+          #     azureSubscription: '$(azureServiceConnection)'
+          #     scriptType: bash
+          #     scriptLocation: inlineScript
+          #     inlineScript: |
+          #       echo "=== Pushing Backend Image ==="
+          #       docker push $(acrLoginServer)/$(backendRepository):$(Build.BuildId)
+          #       docker push $(acrLoginServer)/$(backendRepository):latest
+          #       echo "✅ Backend pushed → $(acrLoginServer)/$(backendRepository):$(Build.BuildId)"
 
           # --- Step 8: Build Frontend Image (No Push Yet) ---
           - task: AzureCLI@2
@@ -194,18 +201,18 @@ stages:
               echo "✅ Trivy frontend scan passed — no fixable HIGH/CRITICAL vulnerabilities!"
             displayName: 'Trivy Scan — Frontend Image'
 
-          # --- Step 10: Push Frontend Image to ACR (Only if Scan Passed) ---
-          - task: AzureCLI@2
-            displayName: 'Push Frontend Image to ACR'
-            inputs:
-              azureSubscription: '$(azureServiceConnection)'
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: |
-                echo "=== Pushing Frontend Image ==="
-                docker push $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)
-                docker push $(acrLoginServer)/$(frontendRepository):latest
-                echo "✅ Frontend pushed → $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)"
+          # # --- Step 10: Push Frontend Image to ACR (Only if Scan Passed) ---
+          # - task: AzureCLI@2
+          #   displayName: 'Push Frontend Image to ACR'
+          #   inputs:
+          #     azureSubscription: '$(azureServiceConnection)'
+          #     scriptType: bash
+          #     scriptLocation: inlineScript
+          #     inlineScript: |
+          #       echo "=== Pushing Frontend Image ==="
+          #       docker push $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)
+          #       docker push $(acrLoginServer)/$(frontendRepository):latest
+          #       echo "✅ Frontend pushed → $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)"
 
           # --- Step 11: IaC Security Scan (Checkov) ---
           # Scans Terraform files in /infra for security misconfigurations.
