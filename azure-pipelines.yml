@@ -369,63 +369,52 @@ stages:
       backendBlueSuffix: $[ stageDependencies.TerraformPlan.TerraformPlanJob.outputs['FetchBlueRevisions.backendBlueSuffix'] ]
       frontendBlueSuffix: $[ stageDependencies.TerraformPlan.TerraformPlanJob.outputs['FetchBlueRevisions.frontendBlueSuffix'] ]
     jobs:
-      - job: DeployGreenJob
+      - deployment: DeployGreenJob
         displayName: 'TF Apply — Green Revision + DB Init'
-        steps:
-          - task: TerraformInstaller@1
-            displayName: 'Install Terraform'
-            inputs:
-              terraformVersion: 'latest'
+        environment: 'staging'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                
+                - task: TerraformInstaller@1
+                  displayName: 'Install Terraform'
+                  inputs:
+                    terraformVersion: 'latest'
 
-          # Re-run Init — fresh agent, provider plugins need reinstalling.
-          - task: TerraformTask@5
-            displayName: 'Terraform Init'
-            inputs:
-              provider: 'azurerm'
-              command: 'init'
-              workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
-              backendServiceArm: '$(azureServiceConnection)'
-              backendAzureRmResourceGroupName: '$(tfStorageResourceGroup)'
-              backendAzureRmStorageAccountName: '$(tfStorageAccount)'
-              backendAzureRmContainerName: '$(tfStateContainer)'
-              backendAzureRmKey: '$(tfStateKey)'
+                # In a deployment job, artifacts are automatically downloaded to $(Pipeline.Workspace).
+                # We copy the approved tfplan from the downloaded artifact into our working directory.
+                - script: |
+                    echo "=== Copying approved tfplan from Stage 2 artifact ==="
+                    cp $(Pipeline.Workspace)/terraform-plan/tfplan $(System.DefaultWorkingDirectory)/infra/
+                  displayName: 'Retrieve Approved Terraform Plan'
 
-          # Re-plan with identical vars as Stage 2 — generates fresh tfplan binary.
-          - task: TerraformTask@5
-            displayName: 'Terraform Plan (pre-apply re-plan)'
-            inputs:
-              provider: 'azurerm'
-              command: 'plan'
-              workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
-              commandOptions: >-
-                -out tfplan
-                -var="resource_group_name=$(resourceGroupName)"
-                -var="mysql_server_name=$(mysqlServerName)"
-                -var="db_password=$(APP_DB_PASSWORD)"
-                -var="acr_name=$(acrName)"
-                -var="jwt_secret=$(JWT_SECRET)"
-                -var="image_tag=$(Build.BuildId)"
-                -var="green_revision_suffix=v-$(Build.BuildId)"
-                -var="backend_blue_revision_suffix=$(backendBlueSuffix)"
-                -var="frontend_blue_revision_suffix=$(frontendBlueSuffix)"
-                -var="is_initial_deployment=$(isBootstrap)"
-                -var="blue_traffic_weight=100"
-                -var="green_traffic_weight=0"
-              environmentServiceNameAzureRM: '$(azureServiceConnection)'
-              environmentAzureRmUseIdTokenGeneration: true
+                # Re-run Init — fresh agent, provider plugins need reinstalling.
+                - task: TerraformTask@5
+                  displayName: 'Terraform Init'
+                  inputs:
+                    provider: 'azurerm'
+                    command: 'init'
+                    workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+                    backendServiceArm: '$(azureServiceConnection)'
+                    backendAzureRmResourceGroupName: '$(tfStorageResourceGroup)'
+                    backendAzureRmStorageAccountName: '$(tfStorageAccount)'
+                    backendAzureRmContainerName: '$(tfStateContainer)'
+                    backendAzureRmKey: '$(tfStateKey)'
 
-          # Apply: creates green revision.
-          # Normal mode: green at 0% traffic, blue unchanged at 100%.
-          # Bootstrap mode: single revision at 100% (latest_revision=true).
-          - task: TerraformTask@5
-            displayName: 'Terraform Apply — Deploy Green Revision'
-            inputs:
-              provider: 'azurerm'
-              command: 'apply'
-              workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
-              commandOptions: 'tfplan'
-              environmentServiceNameAzureRM: '$(azureServiceConnection)'
-              environmentAzureRmUseIdTokenGeneration: true
+                # Apply: creates green revision using the approved plan from Stage 2.
+                # Normal mode: green at 0% traffic, blue unchanged at 100%.
+                # Bootstrap mode: single revision at 100% (latest_revision=true).
+                - task: TerraformTask@5
+                  displayName: 'Terraform Apply — Deploy Green Revision'
+                  inputs:
+                    provider: 'azurerm'
+                    command: 'apply'
+                    workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+                    commandOptions: 'tfplan'
+                    environmentServiceNameAzureRM: '$(azureServiceConnection)'
+                    environmentAzureRmUseIdTokenGeneration: true
 
           # DB init runs once after infrastructure is ready.
           # Idempotent script — safe to run on every pipeline execution.
