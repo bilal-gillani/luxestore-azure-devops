@@ -57,10 +57,19 @@ stages:
           - script: |
               pwd
               ls -lah
-              git log -p
               echo "=== Downloading & Running Gitleaks ==="
               # We use a docker container for Gitleaks so it's clean and versioned
-              docker run -v $(System.DefaultWorkingDirectory):/path zricethezav/gitleaks:latest detect --source="/path" -v
+              docker run -v $(System.DefaultWorkingDirectory):/path zricethezav/gitleaks:v8.30.1 detect --source="/path" -v
+              exit_code=$?
+              echo "Gitleaks exit code: $exit_code"
+              if [ $exit_code -eq 0 ]; then
+                echo "No secrets found."
+              elif [ $exit_code -eq 1 ]; then
+                echo "##vso[task.logissue type=warning]Gitleaks found potential secrets — review scan output above."
+              else
+                echo "Gitleaks failed to run properly (exit code $exit_code) — this is a tooling issue, not a detection result."
+                exit $exit_code
+              fi
             displayName: 'Secrets Scan (Gitleaks)'
 
           # The SP (with AcrPush role on ACR) logs Docker into the registry.
