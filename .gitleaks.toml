@@ -1,29 +1,24 @@
-# ==============================================================================
-# .gitleaks.toml — Gitleaks Configuration 
-# ==============================================================================
+# .gitleaks.toml
+title = "Gitleaks configuration"
 
-title = "LuxeStore Gitleaks Config"
+[extend]
+# Inherit all 160+ default secret detection rules from Gitleaks
+useDefault = true
 
-# ------------------------------------------------------------------------------
-# Allowlist: Paths to exclude from scanning
-# (non-sensitive files or known-safe patterns)
-# ------------------------------------------------------------------------------
 [allowlist]
-  description = "LuxeStore known safe exclusions"
+description = "Global repository allowlist"
 
-  # Exclude git internals and lock files
-  paths = [
-    '''.git/''',
-    '''infra/.terraform.lock.hcl''',
+# Stop Gitleaks from scanning specific files/folders (Regex patterns)
+paths = [
+    '''node_modules/''',
+    '''\.git/''',
+    '''package-lock\.json''',
     '''infra/.terraform/''',
-    '''ecommerce-backend/node_modules/''',
-  ]
+    '''infra/.terraform.lock.hcl'''
+]
 
-  # Exclude known safe patterns across the whole repo:
-  # - Unsplash image URLs in seed.sql (contain long query strings with = signs)
-  # - Docker base image references
-  # - Azure resource IDs in comments/docs
-  regexes = [
+# Stop Gitleaks from triggering on known safe generic values or false positives
+regexes = [
     '''https://images\.unsplash\.com/''',
-    '''FROM (node|nginx|mysql):[a-z0-9\.-]+-alpine''',
-  ]
+    '''FROM (node|nginx|mysql):[a-z0-9\.-]+-alpine'''
+]
