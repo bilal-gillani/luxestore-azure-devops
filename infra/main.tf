@@ -34,7 +34,7 @@ resource "azurerm_mysql_flexible_server_firewall_rule" "allow_azure_services" {
   resource_group_name = data.azurerm_resource_group.rg.name
   server_name         = data.azurerm_mysql_flexible_server.mysql.name
   start_ip_address    = "0.0.0.0"
-  end_ip_address      = "255.255.255.255"
+  end_ip_address      = "0.0.0.0"
 }
 
 # ------------------------------------------------------------------------------
