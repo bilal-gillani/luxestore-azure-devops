@@ -112,7 +112,7 @@ stages:
           - script: |
               echo "=== Running IaC Scan (Checkov) ==="
               # We use a docker container for Checkov
-              docker run --rm -v $(System.DefaultWorkingDirectory)/infra:/infra bridgecrew/checkov:latest -d /infra --framework terraform
+              docker run --rm -v $(System.DefaultWorkingDirectory):/repo bridgecrew/checkov:latest -d /repo --framework terraform dockerfile
             displayName: 'IaC Scan (Checkov)'
 
           # The SP (with AcrPush role on ACR) logs Docker into the registry.
