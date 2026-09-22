@@ -156,6 +156,12 @@ stages:
                   ecommerce-backend/
                 echo "✅ Backend image built: $(acrLoginServer)/$(backendRepository):$(Build.BuildId)"
 
+          - script: |
+              echo "=== Scanning Backend Image (OS only) ==="
+              # NOTE: Exit code handling is intentionally omitted here for the first test run
+              docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --scanners vuln --vuln-type os --exit-code 1 $(acrLoginServer)/$(backendRepository):$(Build.BuildId)
+            displayName: 'Trivy Image Scan (Backend)'
+
           - task: AzureCLI@2
             displayName: 'Push Backend Image to ACR'
             inputs:
@@ -182,6 +188,12 @@ stages:
                   -f html/Dockerfile \
                   html/
                 echo "✅ Frontend image built: $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)"
+
+          - script: |
+              echo "=== Scanning Frontend Image (OS only) ==="
+              # NOTE: Exit code handling is intentionally omitted here for the first test run
+              docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --scanners vuln --vuln-type os --exit-code 1 $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)
+            displayName: 'Trivy Image Scan (Frontend)'
 
           - task: AzureCLI@2
             displayName: 'Push Frontend Image to ACR'
