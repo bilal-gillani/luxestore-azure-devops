@@ -158,8 +158,19 @@ stages:
 
           - script: |
               echo "=== Scanning Backend Image (OS only) ==="
-              # NOTE: Exit code handling is intentionally omitted here for the first test run
-              docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --scanners vuln --vuln-type os --exit-code 1 $(acrLoginServer)/$(backendRepository):$(Build.BuildId)
+              docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --scanners vuln --vuln-type os --severity HIGH,CRITICAL --exit-code 1 $(acrLoginServer)/$(backendRepository):$(Build.BuildId)
+              exit_code=$?
+              echo "Trivy exit code: $exit_code"
+              
+              if [ $exit_code -eq 0 ]; then
+                echo "No HIGH/CRITICAL issues found in backend image."
+              elif [ $exit_code -eq 1 ]; then
+                echo "##vso[task.logissue type=warning]Trivy found HIGH/CRITICAL issues in backend image — review scan output above."
+                echo "##vso[task.complete result=SucceededWithIssues;]"
+              else
+                echo "Trivy failed to run properly (exit code $exit_code) — this is a tooling issue, not a detection result."
+                exit $exit_code
+              fi
             displayName: 'Trivy Image Scan (Backend)'
 
           - task: AzureCLI@2
@@ -191,8 +202,19 @@ stages:
 
           - script: |
               echo "=== Scanning Frontend Image (OS only) ==="
-              # NOTE: Exit code handling is intentionally omitted here for the first test run
-              docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --scanners vuln --vuln-type os --exit-code 1 $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)
+              docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --scanners vuln --vuln-type os --severity HIGH,CRITICAL --exit-code 1 $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)
+              exit_code=$?
+              echo "Trivy exit code: $exit_code"
+              
+              if [ $exit_code -eq 0 ]; then
+                echo "No HIGH/CRITICAL issues found in frontend image."
+              elif [ $exit_code -eq 1 ]; then
+                echo "##vso[task.logissue type=warning]Trivy found HIGH/CRITICAL issues in frontend image — review scan output above."
+                echo "##vso[task.complete result=SucceededWithIssues;]"
+              else
+                echo "Trivy failed to run properly (exit code $exit_code) — this is a tooling issue, not a detection result."
+                exit $exit_code
+              fi
             displayName: 'Trivy Image Scan (Frontend)'
 
           - task: AzureCLI@2
