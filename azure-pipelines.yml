@@ -69,6 +69,7 @@ stages:
               set -euo pipefail
               echo "=== Running Gitleaks Secret Scanner ==="
               docker run --rm \
+                --user root \
                 -v "$(Build.SourcesDirectory):/repo" \
                 ghcr.io/gitleaks/gitleaks:latest \
                 detect \
