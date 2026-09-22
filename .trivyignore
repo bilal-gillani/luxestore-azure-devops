@@ -1,6 +1,0 @@
-# Trivy vulnerability scanner ignore list
-# Add CVE IDs here for known acceptable/false positive vulnerabilities
-# Format: one CVE per line, e.g. CVE-2021-1234
-
-# Example (uncomment when needed):
-# CVE-2021-1234
