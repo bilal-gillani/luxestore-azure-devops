@@ -1,0 +1,123 @@
+trigger:
+  - none
+
+pool:
+  vmImage: ubuntu-latest
+
+# ============================================================
+# Pipeline Variables
+# ============================================================
+variables:
+  - group: 'luxestore-secrets'
+
+  - name: azureServiceConnection
+    value: 'azure-service-connection-name'
+  
+  - name: acrName
+    value: 'acr-name'
+  - name: acrLoginServer
+    value: '$(acrName).azurecr.io'
+
+  # Image repository names inside ACR
+  - name: backendRepository
+    value: 'luxestore-backend'
+  - name: frontendRepository
+    value: 'luxestore-frontend'
+
+  # Azure Infrastructure & Database Variables
+  - name: resourceGroupName
+    value: 'rg-name'
+  - name: mysqlServerName
+    value: 'mysql-server-name'
+  - name: mysqlServerFqdn
+    value: '$(mysqlServerName).mysql.database.azure.com'
+  - name: mysqlAdminUsername
+    value: 'sqladmin'
+
+  # Remote Terraform State in Azure Storage
+  - name: tfStorageResourceGroup
+    value: 'tf-storage-rg-name'
+  - name: tfStorageAccount
+    value: 'tf-storage-account-name'
+  - name: tfStateContainer
+    value: 'tfstate'
+  - name: tfStateKey
+    value: 'tf-state-key'
+
+stages:
+  # ============================================================
+  # Stage 1: Build & Security Scan Stage (Continuous Integration - CI)
+  # ============================================================
+  - stage: Build
+    displayName: 'Build, Scan & Push (CI)'
+    jobs:
+      - job: BuildAndPushJob
+        displayName: 'Security Scan, Build & Push Images'
+        steps:
+          # The SP (with AcrPush role on ACR) logs Docker into the registry.
+          # Credentials are stored in ~/.docker/config.json on the agent
+          # and persist for all subsequent steps in this job.
+          - task: AzureCLI@2
+            displayName: 'Login to ACR'
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                echo "=== Authenticating Docker to ACR ==="
+                az acr login --name $(acrName)
+                echo "✅ Logged in to $(acrLoginServer)"
+
+          - task: AzureCLI@2
+            displayName: 'Build Backend Docker Image'
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                echo "=== Building Backend Image ==="
+                docker build \
+                  -t $(acrLoginServer)/$(backendRepository):$(Build.BuildId) \
+                  -t $(acrLoginServer)/$(backendRepository):latest \
+                  -f ecommerce-backend/Dockerfile \
+                  ecommerce-backend/
+                echo "✅ Backend image built: $(acrLoginServer)/$(backendRepository):$(Build.BuildId)"
+
+          - task: AzureCLI@2
+            displayName: 'Push Backend Image to ACR'
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                echo "=== Pushing Backend Image ==="
+                docker push $(acrLoginServer)/$(backendRepository):$(Build.BuildId)
+                docker push $(acrLoginServer)/$(backendRepository):latest
+                echo "✅ Backend pushed → $(acrLoginServer)/$(backendRepository):$(Build.BuildId)"
+
+          - task: AzureCLI@2
+            displayName: 'Build Frontend Docker Image'
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                echo "=== Building Frontend Image ==="
+                docker build \
+                  -t $(acrLoginServer)/$(frontendRepository):$(Build.BuildId) \
+                  -t $(acrLoginServer)/$(frontendRepository):latest \
+                  -f html/Dockerfile \
+                  html/
+                echo "✅ Frontend image built: $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)"
+
+          - task: AzureCLI@2
+            displayName: 'Push Frontend Image to ACR'
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                echo "=== Pushing Frontend Image ==="
+                docker push $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)
+                docker push $(acrLoginServer)/$(frontendRepository):latest
+                echo "✅ Frontend pushed → $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)"
