@@ -73,6 +73,12 @@ stages:
               fi
             displayName: 'Secrets Scan (Gitleaks)'
 
+          - script: |
+              echo "=== Running SAST Scan (Semgrep) ==="
+              # We use a docker container for Semgrep
+              docker run --rm -v $(System.DefaultWorkingDirectory):/src semgrep/semgrep:latest semgrep scan --config=auto --error /src
+            displayName: 'SAST Scan (Semgrep)'
+
           # The SP (with AcrPush role on ACR) logs Docker into the registry.
           # Credentials are stored in ~/.docker/config.json on the agent
           # and persist for all subsequent steps in this job.
