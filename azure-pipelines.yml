@@ -630,3 +630,128 @@ stages:
                       echo "⚙️  Backend Internal FQDN:  $BACKEND_FQDN"
                       echo "🔵 Old blue revision is dormant — rollback available instantly"
                       echo "=================================================="
+
+  # ============================================================
+  # Stage 6: Post-Deployment Verification & Automated Rollback
+  # Runs after traffic is switched to green. It executes a KQL 
+  # query against the Log Analytics Workspace to detect errors.
+  # If errors are found in the new revision, it automatically 
+  # executes a Terraform rollback, flipping traffic back to blue.
+  # ============================================================
+  - stage: RollbackVerification
+    displayName: 'Post-Deployment Verification & Rollback'
+    dependsOn:
+      - TerraformPlan
+      - TrafficSwitch
+    condition: |
+      and(
+        succeeded('TrafficSwitch'),
+        eq(dependencies.TerraformPlan.outputs['TerraformPlanJob.FetchBlueRevisions.isBootstrap'], 'false')
+      )
+    variables:
+      backendBlueSuffix: $[ stageDependencies.TerraformPlan.TerraformPlanJob.outputs['FetchBlueRevisions.backendBlueSuffix'] ]
+      frontendBlueSuffix: $[ stageDependencies.TerraformPlan.TerraformPlanJob.outputs['FetchBlueRevisions.frontendBlueSuffix'] ]
+    jobs:
+      - job: VerificationJob
+        displayName: 'Verify Logs and Rollback if needed'
+        steps:
+          - task: AzureCLI@2
+            displayName: 'Query Log Analytics & Rollback'
+            inputs:
+              azureSubscription: '$(azureServiceConnection)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                
+                FRONTEND_FQDN=$(az containerapp show \
+                  --resource-group "$(resourceGroupName)" \
+                  --name frontend \
+                  --query "properties.configuration.ingress.fqdn" -o tsv)
+                  
+                echo "=== Simulating Production Traffic (Hitting Poison Endpoint) ==="
+                curl -s -f "https://$FRONTEND_FQDN/api/demo-error" || echo "Hit error endpoint as planned."
+                
+                echo "Waiting 30 seconds for logs to reach Log Analytics Workspace..."
+                sleep 30
+                
+                WORKSPACE_ID=$(az monitor log-analytics workspace show \
+                  --resource-group "$(resourceGroupName)" \
+                  --workspace-name "log-analytics-workspace-name" \
+                  --query "customerId" -o tsv)
+                  
+                echo "=== Querying Log Analytics Workspace for Errors in Revision: v-$(Build.BuildId) ==="
+                
+                # The KQL Query
+                QUERY="union isfuzzy=true ContainerAppSystemLogs_CL, ContainerAppConsoleLogs_CL | where TimeGenerated > ago(10m) | where RevisionName_s contains 'v-$(Build.BuildId)' | where Log_s has_any ('ERROR', 'Exception', 'CrashLoopBackOff', 'Failed', 'fatal')"
+                
+                az monitor log-analytics query \
+                  --workspace "$WORKSPACE_ID" \
+                  --analytics-query "$QUERY" > query_results.json
+                  
+                ERROR_COUNT=$(jq '. | length' query_results.json)
+                
+                echo "Errors found: $ERROR_COUNT"
+                
+                if [ "$ERROR_COUNT" -gt 0 ]; then
+                  echo "🚨 CRITICAL ERROR DETECTED IN PRODUCTION LOGS!"
+                  echo "🚨 INITIATING AUTOMATED ROLLBACK..."
+                  
+                  # Save a flag so the next step knows to run terraform
+                  echo "##vso[task.setvariable variable=ROLLBACK_REQUIRED]true"
+                else
+                  echo "✅ No errors detected. Deployment is healthy."
+                  echo "##vso[task.setvariable variable=ROLLBACK_REQUIRED]false"
+                fi
+                
+          # --- The Rollback Steps ---
+          # Only runs if the previous step found errors.
+          - task: TerraformInstaller@1
+            displayName: 'Install Terraform for Rollback'
+            condition: eq(variables['ROLLBACK_REQUIRED'], 'true')
+            inputs:
+              terraformVersion: 'latest'
+
+          - task: TerraformTask@5
+            displayName: 'Terraform Init (Rollback)'
+            condition: eq(variables['ROLLBACK_REQUIRED'], 'true')
+            inputs:
+              provider: 'azurerm'
+              command: 'init'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+              backendServiceArm: '$(azureServiceConnection)'
+              backendAzureRmResourceGroupName: '$(tfStorageResourceGroup)'
+              backendAzureRmStorageAccountName: '$(tfStorageAccount)'
+              backendAzureRmContainerName: '$(tfStateContainer)'
+              backendAzureRmKey: '$(tfStateKey)'
+              
+          - task: TerraformTask@5
+            displayName: 'Terraform Apply — ROLLBACK to Blue (green=0%, blue=100%)'
+            condition: eq(variables['ROLLBACK_REQUIRED'], 'true')
+            inputs:
+              provider: 'azurerm'
+              command: 'apply'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/infra'
+              # We pass variables directly to apply without a plan via -auto-approve
+              commandOptions: >-
+                -auto-approve
+                -var="resource_group_name=$(resourceGroupName)"
+                -var="mysql_server_name=$(mysqlServerName)"
+                -var="db_password=$(APP_DB_PASSWORD)"
+                -var="acr_name=$(acrName)"
+                -var="jwt_secret=$(JWT_SECRET)"
+                -var="image_tag=$(Build.BuildId)"
+                -var="green_revision_suffix=v-$(Build.BuildId)"
+                -var="backend_blue_revision_suffix=$(backendBlueSuffix)"
+                -var="frontend_blue_revision_suffix=$(frontendBlueSuffix)"
+                -var="is_initial_deployment=false"
+                -var="blue_traffic_weight=100"
+                -var="green_traffic_weight=0"
+              environmentServiceNameAzureRM: '$(azureServiceConnection)'
+              environmentAzureRmUseIdTokenGeneration: true
+              
+          - script: |
+              echo "❌ ROLLBACK COMPLETE. The deployment was aborted and traffic was successfully reverted to the blue revision."
+              exit 1
+            displayName: 'Fail Pipeline (Rollback Complete)'
+            condition: eq(variables['ROLLBACK_REQUIRED'], 'true')
