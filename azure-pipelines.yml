@@ -55,6 +55,9 @@ stages:
         displayName: 'Security Scan, Build & Push Images'
         steps:
           - script: |
+              pwd
+              ls -lah
+              git log -p
               echo "=== Downloading & Running Gitleaks ==="
               # We use a docker container for Gitleaks so it's clean and versioned
               docker run -v $(System.DefaultWorkingDirectory):/path zricethezav/gitleaks:latest detect --source="/path" -v
