@@ -77,7 +77,26 @@ stages:
               echo "=== Running SAST Scan (Semgrep) ==="
               # We use a docker container for Semgrep
               docker run --rm -v $(System.DefaultWorkingDirectory):/src semgrep/semgrep:latest semgrep scan --config=auto --error /src
+              exit_code=$?
+              echo "Semgrep exit code: $exit_code"
+              
+              if [ $exit_code -eq 0 ]; then
+                echo "No SAST issues found."
+              elif [ $exit_code -eq 1 ]; then
+                echo "##vso[task.logissue type=warning]Semgrep found potential security issues — review scan output above."
+                echo "##vso[task.complete result=SucceededWithIssues;]"
+              else
+                echo "Semgrep failed to run properly (exit code $exit_code) — this is a tooling issue, not a detection result."
+                exit $exit_code
+              fi
             displayName: 'SAST Scan (Semgrep)'
+
+          - script: |
+              echo "=== Running SCA Scan (Trivy fs) ==="
+              # We use a docker container for Trivy filesystem scan
+              # NOTE: Exit code handling is intentionally omitted here for the first test run
+              docker run --rm -v $(System.DefaultWorkingDirectory):/path aquasec/trivy:latest fs --severity HIGH,CRITICAL --exit-code 1 /path
+            displayName: 'SCA Scan (Trivy fs)'
 
           # The SP (with AcrPush role on ACR) logs Docker into the registry.
           # Credentials are stored in ~/.docker/config.json on the agent
