@@ -111,7 +111,7 @@ stages:
 
           - script: |
               echo "=== Running IaC Scan (Checkov) ==="
-              docker run --rm -v $(System.DefaultWorkingDirectory):/repo bridgecrew/checkov:latest -d /repo --framework terraform dockerfile --soft-fail --hard-fail-on HIGH,CRITICAL
+              docker run --rm -v $(System.DefaultWorkingDirectory):/repo bridgecrew/checkov:latest -d /repo --framework terraform dockerfile
               exit_code=$?
 
               if [ $exit_code -eq 0 ]; then
