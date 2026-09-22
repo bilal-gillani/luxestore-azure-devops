@@ -54,6 +54,12 @@ stages:
       - job: BuildAndPushJob
         displayName: 'Security Scan, Build & Push Images'
         steps:
+          - script: |
+              echo "=== Downloading & Running Gitleaks ==="
+              # We use a docker container for Gitleaks so it's clean and versioned
+              docker run -v $(System.DefaultWorkingDirectory):/path zricethezav/gitleaks:latest detect --source="/path" -v
+            displayName: 'Secrets Scan (Gitleaks)'
+
           # The SP (with AcrPush role on ACR) logs Docker into the registry.
           # Credentials are stored in ~/.docker/config.json on the agent
           # and persist for all subsequent steps in this job.
