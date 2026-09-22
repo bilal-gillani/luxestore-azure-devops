@@ -111,11 +111,12 @@ stages:
 
           - script: |
               echo "=== Running IaC Scan (Checkov) ==="
-              docker run --rm -v $(System.DefaultWorkingDirectory):/repo bridgecrew/checkov:latest -d /repo --framework terraform dockerfile --check CRITICAL
+              docker run --rm -v $(System.DefaultWorkingDirectory):/repo bridgecrew/checkov:latest -d /repo --framework terraform dockerfile --soft-fail --hard-fail-on HIGH
               exit_code=$?
+              echo "Checkov exit code: $exit_code"
 
               if [ $exit_code -eq 0 ]; then
-                echo "No HIGH/CRITICAL findings (LOW/MEDIUM may still be present — check logs above)."
+                echo "No HIGH/CRITICAL severity findings (LOW/MEDIUM/INFO may still be present — check logs above)."
               elif [ $exit_code -eq 1 ]; then
                 echo "##vso[task.logissue type=error]Checkov found HIGH/CRITICAL severity issues — review scan output above."
                 echo "##vso[task.complete result=SucceededWithIssues;]"
