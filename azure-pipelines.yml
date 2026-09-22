@@ -66,6 +66,7 @@ stages:
                 echo "No secrets found."
               elif [ $exit_code -eq 1 ]; then
                 echo "##vso[task.logissue type=warning]Gitleaks found potential secrets — review scan output above."
+                echo "##vso[task.complete result=SucceededWithIssues;]"
               else
                 echo "Gitleaks failed to run properly (exit code $exit_code) — this is a tooling issue, not a detection result."
                 exit $exit_code
