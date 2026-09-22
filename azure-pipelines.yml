@@ -416,25 +416,25 @@ stages:
                     environmentServiceNameAzureRM: '$(azureServiceConnection)'
                     environmentAzureRmUseIdTokenGeneration: true
 
-          # DB init runs once after infrastructure is ready.
-          # Idempotent script — safe to run on every pipeline execution.
-          - task: AzureCLI@2
-            displayName: 'Initialize & Seed Azure MySQL Database'
-            inputs:
-              azureSubscription: '$(azureServiceConnection)'
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: |
-                set -euo pipefail
-                echo "=== Installing MySQL Client ==="
-                sudo apt-get update -qq && sudo apt-get install -y -qq default-mysql-client
+                # DB init runs once after infrastructure is ready.
+                # Idempotent script — safe to run on every pipeline execution.
+                - task: AzureCLI@2
+                  displayName: 'Initialize & Seed Azure MySQL Database'
+                  inputs:
+                    azureSubscription: '$(azureServiceConnection)'
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      echo "=== Installing MySQL Client ==="
+                      sudo apt-get update -qq && sudo apt-get install -y -qq default-mysql-client
 
-                echo "=== Executing Database Initialization Script ==="
-                chmod +x scripts/init-db.sh
-                ./scripts/init-db.sh "$(mysqlServerFqdn)" "$(mysqlAdminUsername)"
-            env:
-              MYSQL_ADMIN_PASSWORD: $(MYSQL_ADMIN_PASSWORD)
-              APP_DB_PASSWORD: $(APP_DB_PASSWORD)
+                      echo "=== Executing Database Initialization Script ==="
+                      chmod +x scripts/init-db.sh
+                      ./scripts/init-db.sh "$(mysqlServerFqdn)" "$(mysqlAdminUsername)"
+                  env:
+                    MYSQL_ADMIN_PASSWORD: $(MYSQL_ADMIN_PASSWORD)
+                    APP_DB_PASSWORD: $(APP_DB_PASSWORD)
 
   # ============================================================
   # Stage 4: Smoke Tests
