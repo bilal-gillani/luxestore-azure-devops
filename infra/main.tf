@@ -288,10 +288,8 @@ resource "azurerm_container_app" "frontend" {
       memory = "0.5Gi"
 
       env {
-        name = "BACKEND_URL"
-        # Dynamically point to the specific green backend revision FQDN.
-        # This ensures the green frontend tests the green backend during the smoke test phase (0% traffic).
-        value = "https://backend--${var.green_revision_suffix}.internal.${azurerm_container_app_environment.env.default_domain}"
+        name  = "BACKEND_URL"
+        value = "http://backend"
       }
     }
   }
