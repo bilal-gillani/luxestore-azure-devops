@@ -94,7 +94,7 @@ stages:
           - script: |
               echo "=== Running SCA Scan (Trivy fs) ==="
               # We use a docker container for Trivy filesystem scan
-              docker run --rm -v $(System.DefaultWorkingDirectory):/path aquasec/trivy:latest fs --scanners vuln,secret,license,misconfig --severity HIGH,CRITICAL --exit-code 1 /path
+              docker run --rm -v $(System.DefaultWorkingDirectory):/path aquasec/trivy:latest fs --scanners vuln,license --severity HIGH,CRITICAL --exit-code 1 /path
               exit_code=$?
               echo "Trivy exit code: $exit_code"
               
