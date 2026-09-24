@@ -196,7 +196,7 @@ stages:
               echo "=== Scanning Backend Image (OS only) ==="
               docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
                 -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
-                aquasec/trivy:0.74.0 image --scanners vuln --pkg-types os --severity HIGH,CRITICAL \
+                aquasec/trivy:0.74.0 image --scanners vuln --pkg-types os,library --severity HIGH,CRITICAL \
                 --exit-code 1 --format json --output /out/trivy-backend.json \
                 $(acrLoginServer)/$(backendRepository):$(Build.BuildId)
               exit_code=$?
@@ -250,7 +250,7 @@ stages:
               echo "=== Scanning Frontend Image (OS only) ==="
               docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
                 -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
-                aquasec/trivy:0.74.0 image --scanners vuln --pkg-types os --severity HIGH,CRITICAL \
+                aquasec/trivy:0.74.0 image --scanners vuln --pkg-types os,library --severity HIGH,CRITICAL \
                 --exit-code 1 --format json --output /out/trivy-frontend.json \
                 $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)
               exit_code=$?
