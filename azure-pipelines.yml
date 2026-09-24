@@ -85,7 +85,7 @@ stages:
               # We use a docker container for Semgrep
               docker run --rm -v $(System.DefaultWorkingDirectory):/src \
                 -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
-                semgrep/semgrep:latest semgrep scan --config=auto --error \
+                semgrep/semgrep:v1.178.0 semgrep scan --config=auto --error \
                 --sarif-output=/out/semgrep.sarif /src
               exit_code=$?
               echo "Semgrep exit code: $exit_code"
@@ -106,16 +106,16 @@ stages:
               # We use a docker container for Trivy filesystem scan
               docker run --rm -v $(System.DefaultWorkingDirectory):/path \
                 -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
-                aquasec/trivy:latest fs --scanners vuln,license --severity HIGH,CRITICAL \
+                aquasec/trivy:v0.74.0 fs --scanners vuln,license --severity HIGH,CRITICAL \
                 --exit-code 1 --format json --output /out/trivy-fs.json /path
               exit_code=$?
               echo "Trivy exit code: $exit_code"
 
               docker run --rm -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
-                aquasec/trivy:latest convert --format table /out/trivy-fs.json
+                aquasec/trivy:v0.74.0 convert --format table /out/trivy-fs.json
 
               docker run --rm -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
-                aquasec/trivy:latest convert --format sarif --output /out/trivy-fs.sarif /out/trivy-fs.json
+                aquasec/trivy:v0.74.0 convert --format sarif --output /out/trivy-fs.sarif /out/trivy-fs.json
               
               if [ $exit_code -eq 0 ]; then
                 echo "No HIGH/CRITICAL issues found."
@@ -132,7 +132,7 @@ stages:
               echo "=== Running IaC Scan (Checkov) ==="
               docker run --rm -v $(System.DefaultWorkingDirectory):/repo \
                 -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
-                bridgecrew/checkov:latest -d /repo --framework terraform dockerfile \
+                bridgecrew/checkov:3.3.19 -d /repo --framework terraform dockerfile \
                 --soft-fail --quiet -o cli -o sarif --output-file-path console,/out/checkov.sarif
               exit_code=$?
 
@@ -181,10 +181,20 @@ stages:
 
           - script: |
               echo "=== Scanning Backend Image (OS only) ==="
-              docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --scanners vuln --pkg-types os --severity HIGH,CRITICAL --exit-code 1 $(acrLoginServer)/$(backendRepository):$(Build.BuildId)
+              docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
+                aquasec/trivy:v0.74.0 image --scanners vuln --pkg-types os --severity HIGH,CRITICAL \
+                --exit-code 1 --format json --output /out/trivy-backend.json \
+                $(acrLoginServer)/$(backendRepository):$(Build.BuildId)
               exit_code=$?
               echo "Trivy exit code: $exit_code"
-              
+
+              docker run --rm -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
+                aquasec/trivy:v0.74.0 convert --format table /out/trivy-backend.json
+
+              docker run --rm -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
+                aquasec/trivy:v0.74.0 convert --format sarif --output /out/trivy-backend.sarif /out/trivy-backend.json
+
               if [ $exit_code -eq 0 ]; then
                 echo "No HIGH/CRITICAL issues found in backend image."
               elif [ $exit_code -eq 1 ]; then
@@ -225,10 +235,20 @@ stages:
 
           - script: |
               echo "=== Scanning Frontend Image (OS only) ==="
-              docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --scanners vuln --pkg-types os --severity HIGH,CRITICAL --exit-code 1 $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)
+              docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
+                aquasec/trivy:v0.74.0 image --scanners vuln --pkg-types os --severity HIGH,CRITICAL \
+                --exit-code 1 --format json --output /out/trivy-frontend.json \
+                $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)
               exit_code=$?
               echo "Trivy exit code: $exit_code"
-              
+
+              docker run --rm -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
+                aquasec/trivy:v0.74.0 convert --format table /out/trivy-frontend.json
+
+              docker run --rm -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
+                aquasec/trivy:v0.74.0 convert --format sarif --output /out/trivy-frontend.sarif /out/trivy-frontend.json
+
               if [ $exit_code -eq 0 ]; then
                 echo "No HIGH/CRITICAL issues found in frontend image."
               elif [ $exit_code -eq 1 ]; then
@@ -260,19 +280,31 @@ stages:
                 echo "| Tool | Error | Warning | Note | Total |"
                 echo "|---|---:|---:|---:|---:|"
                 for f in "$OUT"/*.sarif; do
-                  jq -r '.runs[0].tool.driver.name as $t | [.runs[].results[]?] as $r
-                    | "| \($t) | \($r|map(select(.level=="error"))|length) | \($r|map(select((.level//"warning")=="warning"))|length) | \($r|map(select(.level=="note"))|length) | \($r|length) |"' "$f"
+                  jq -r '
+                    (input_filename | split("/")[-1] | sub("\\.sarif$";"")) as $t
+                    | [ .runs[]
+                        | (.tool.driver.rules // []) as $rules
+                        | .results[]?
+                        | (.level
+                          // (if .ruleIndex != null then $rules[.ruleIndex].defaultConfiguration.level else null end)
+                          // "warning")
+                      ] as $l
+                    | "| \($t) | \($l|map(select(.=="error"))|length) | \($l|map(select(.=="warning"))|length) | \($l|map(select(.=="note"))|length) | \($l|length) |"
+                  ' "$f"
                 done
-                for t in gitleaks semgrep trivy-fs checkov; do
+                for t in gitleaks semgrep trivy-fs trivy-backend trivy-frontend checkov; do
                   [ -s "$OUT/$t.sarif" ] || echo "| ⚠️ $t | no SARIF produced | | | |"
                 done
                 echo; echo "**Top findings (10 per tool)**"; echo
                 echo "| Tool | Rule | Message | Location |"
                 echo "|---|---|---|---|"
                 for f in "$OUT"/*.sarif; do
-                  jq -r '.runs[0].tool.driver.name as $t | [.runs[].results[]?][:10][]
+                  jq -r '
+                    (input_filename | split("/")[-1] | sub("\\.sarif$";"")) as $t
+                    | [.runs[].results[]?][:10][]
                     | (.locations[0].physicalLocation.artifactLocation.uri // "-" | sub("^/?(src|path|repo)/";"")) as $u
-                    | "| \($t) | `\(.ruleId)` | \(.message.text | gsub("[\\n|]";" ") | .[0:160]) | `\($u):\(.locations[0].physicalLocation.region.startLine // "")` |"' "$f"
+                    | "| \($t) | `\(.ruleId)` | \(.message.text | gsub("[\\n|]";" ") | .[0:160]) | `\($u):\(.locations[0].physicalLocation.region.startLine // "")` |"
+                  ' "$f"
                 done
               } > "$MD"
               echo "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Security scan findings]$MD"
