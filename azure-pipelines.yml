@@ -683,7 +683,7 @@ stages:
                 echo "=== Querying Log Analytics Workspace for Errors in Revision: v-$(Build.BuildId) ==="
                 
                 # The KQL Query
-                QUERY="union isfuzzy=true ContainerAppSystemLogs_CL, ContainerAppConsoleLogs_CL | where TimeGenerated > ago(10m) | where RevisionName_s contains 'v-$(Build.BuildId)' | where Log_s has_any ('ERROR', 'Exception', 'CrashLoopBackOff', 'Failed', 'fatal')"
+                QUERY="union isfuzzy=true ContainerAppSystemLogs_CL, ContainerAppConsoleLogs_CL | where TimeGenerated > ago(10m) | where RevisionName_s contains 'backend--v-$(Build.BuildId)' | where Log_s has_any ('ERROR', 'Exception', 'CrashLoopBackOff', 'Failed', 'fatal')"
                 
                 az monitor log-analytics query \
                   --workspace "$WORKSPACE_ID" \
