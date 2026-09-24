@@ -401,7 +401,6 @@ stages:
               cp tfplan     "$(Build.ArtifactStagingDirectory)/plan-binary/"
               echo "📋 Plan rendered — approver: review the terraform-plan-review artifact."
               {
-                echo '## Terraform plan'
                 echo '```'
                 head -n 400 tfplan.txt
                 echo '```'
