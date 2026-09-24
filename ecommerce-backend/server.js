@@ -65,11 +65,11 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// app.get('/api/demo-error', (req, res) => {
-//     // This exact string will be picked up by our KQL query
-//     console.error("ERROR: Simulated critical production failure for demo purposes.");
-//     res.status(500).json({ error: "Simulated Error" });
-// });
+app.get('/api/demo-error', (req, res) => {
+    // This exact string will be picked up by our KQL query
+    console.error("ERROR: Simulated critical production failure for demo purposes.");
+    res.status(500).json({ error: "Simulated Error" });
+});
 
 
 // ── API Routes ──────────────────────────────────────────────────────────────
