@@ -59,6 +59,10 @@ resource "azurerm_container_app_environment" "env" {
   log_analytics_workspace_id = azurerm_log_analytics_workspace.law.id
 }
 
+locals {
+  backend_revision_url = "http://backend--${var.green_revision_suffix}.internal.${azurerm_container_app_environment.env.default_domain}"
+}
+
 # ------------------------------------------------------------------------------
 # Managed Identity & ACR Role Assignment
 # ------------------------------------------------------------------------------
@@ -100,9 +104,10 @@ resource "azurerm_container_app" "backend" {
   }
 
   ingress {
-    external_enabled = false
-    target_port      = 3000
-    transport        = "auto"
+    external_enabled           = false
+    target_port                = 3000
+    allow_insecure_connections = true
+    transport                  = "auto"
 
     # ── BOOTSTRAP MODE (is_initial_deployment = true) ────────────────────────
     # First pipeline run: no blue revision exists yet.
@@ -289,7 +294,7 @@ resource "azurerm_container_app" "frontend" {
 
       env {
         name  = "BACKEND_URL"
-        value = "http://backend"
+        value = local.backend_revision_url # was: "http://backend"
       }
     }
   }
