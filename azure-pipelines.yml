@@ -2,7 +2,7 @@ trigger:
   - none
 
 pool:
-  vmImage: ubuntu-latest
+  vmImage: ubuntu-24.04
 
 # ============================================================
 # Pipeline Variables
@@ -400,6 +400,14 @@ stages:
               cp tfplan.txt "$(Build.ArtifactStagingDirectory)/plan-review/"
               cp tfplan     "$(Build.ArtifactStagingDirectory)/plan-binary/"
               echo "📋 Plan rendered — approver: review the terraform-plan-review artifact."
+              {
+                echo '## Terraform plan'
+                echo '```'
+                head -n 400 tfplan.txt
+                echo '```'
+                [ "$(wc -l < tfplan.txt)" -gt 400 ] && echo '_Truncated. Full plan is in the terraform-plan-review artifact._'
+              } > "$(Build.ArtifactStagingDirectory)/plan-summary.md"
+              echo "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Terraform plan]$(Build.ArtifactStagingDirectory)/plan-summary.md"
             displayName: 'Prepare Terraform Plan Artifacts'
 
           # Human-readable plan: this is what the DeployGreen approver opens.
