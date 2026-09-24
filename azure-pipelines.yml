@@ -54,14 +54,21 @@ stages:
       - job: BuildAndPushJob
         displayName: 'Security Scan, Build & Push Images'
         steps:
+          - script: mkdir -p "$(Build.ArtifactStagingDirectory)/CodeAnalysisLogs"
+            displayName: 'Prepare scan output folder'
+            
           - script: |
               pwd
               ls -lah
               echo "=== Downloading & Running Gitleaks ==="
               # We use a docker container for Gitleaks so it's clean and versioned
-              docker run -v $(System.DefaultWorkingDirectory):/path zricethezav/gitleaks:v8.30.1 detect --source="/path" -v
+              docker run --rm -v $(System.DefaultWorkingDirectory):/path \
+                -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
+                zricethezav/gitleaks:v8.30.1 detect --source=/path -v --redact \
+                --report-format sarif --report-path /out/gitleaks.sarif
               exit_code=$?
               echo "Gitleaks exit code: $exit_code"
+
               if [ $exit_code -eq 0 ]; then
                 echo "No secrets found."
               elif [ $exit_code -eq 1 ]; then
@@ -76,7 +83,10 @@ stages:
           - script: |
               echo "=== Running SAST Scan (Semgrep) ==="
               # We use a docker container for Semgrep
-              docker run --rm -v $(System.DefaultWorkingDirectory):/src semgrep/semgrep:latest semgrep scan --config=auto --error /src
+              docker run --rm -v $(System.DefaultWorkingDirectory):/src \
+                -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
+                semgrep/semgrep:latest semgrep scan --config=auto --error \
+                --sarif-output=/out/semgrep.sarif /src
               exit_code=$?
               echo "Semgrep exit code: $exit_code"
               
@@ -94,9 +104,18 @@ stages:
           - script: |
               echo "=== Running SCA Scan (Trivy fs) ==="
               # We use a docker container for Trivy filesystem scan
-              docker run --rm -v $(System.DefaultWorkingDirectory):/path aquasec/trivy:latest fs --scanners vuln,license --severity HIGH,CRITICAL --exit-code 1 /path
+              docker run --rm -v $(System.DefaultWorkingDirectory):/path \
+                -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
+                aquasec/trivy:latest fs --scanners vuln,license --severity HIGH,CRITICAL \
+                --exit-code 1 --format json --output /out/trivy-fs.json /path
               exit_code=$?
               echo "Trivy exit code: $exit_code"
+
+              docker run --rm -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
+                aquasec/trivy:latest convert --format table /out/trivy-fs.json
+
+              docker run --rm -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
+                aquasec/trivy:latest convert --format sarif --output /out/trivy-fs.sarif /out/trivy-fs.json
               
               if [ $exit_code -eq 0 ]; then
                 echo "No HIGH/CRITICAL issues found."
@@ -111,7 +130,10 @@ stages:
 
           - script: |
               echo "=== Running IaC Scan (Checkov) ==="
-              docker run --rm -v $(System.DefaultWorkingDirectory):/repo bridgecrew/checkov:latest -d /repo --framework terraform dockerfile --soft-fail --hard-fail-on HIGH
+              docker run --rm -v $(System.DefaultWorkingDirectory):/repo \
+                -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
+                bridgecrew/checkov:latest -d /repo --framework terraform dockerfile \
+                --soft-fail --hard-fail-on HIGH -o cli -o sarif --output-file-path console,/out
               exit_code=$?
               echo "Checkov exit code: $exit_code"
 
@@ -229,6 +251,29 @@ stages:
                 docker push $(acrLoginServer)/$(frontendRepository):latest
                 echo "✅ Frontend pushed → $(acrLoginServer)/$(frontendRepository):$(Build.BuildId)"
 
+          - script: |
+              shopt -s nullglob
+              OUT="$(Build.ArtifactStagingDirectory)/CodeAnalysisLogs"
+              MD="$(Build.ArtifactStagingDirectory)/security-summary.md"
+              {
+                echo "## 🔐 Security scan findings"; echo
+                echo "| Tool | Error | Warning | Note | Total |"
+                echo "|---|---:|---:|---:|---:|"
+                for f in "$OUT"/*.sarif; do
+                  jq -r '.runs[0].tool.driver.name as $t | [.runs[].results[]?] as $r
+                    | "| \($t) | \($r|map(select(.level=="error"))|length) | \($r|map(select((.level//"warning")=="warning"))|length) | \($r|map(select(.level=="note"))|length) | \($r|length) |"' "$f"
+                done
+                echo; echo "### Top findings (10 per tool)"; echo
+                echo "| Tool | Rule | Message | Location |"
+                echo "|---|---|---|---|"
+                for f in "$OUT"/*.sarif; do
+                  jq -r '.runs[0].tool.driver.name as $t | [.runs[].results[]?][:10][]
+                    | "| \($t) | `\(.ruleId)` | \(.message.text | gsub("[\\n|]";" ") | .[0:100]) | `\(.locations[0].physicalLocation.artifactLocation.uri // "-"):\(.locations[0].physicalLocation.region.startLine // "")` |"' "$f"
+                done
+              } > "$MD"
+              echo "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Security scan findings]$MD"
+            displayName: 'Publish Security Findings Summary'
+            condition: always()
 
   # ============================================================
   # Stage 2: Terraform Plan
@@ -343,13 +388,29 @@ stages:
               set -euo pipefail
               cd infra
               terraform show -no-color tfplan > tfplan.txt
-              echo "📋 Plan saved — review terraform-plan artifact before approving TrafficSwitch."
-            displayName: 'Save Terraform Plan as Text'
 
+              # Stage each artifact in its own folder so only these files are published
+              # (no .terraform/ provider binaries or backend config).
+              mkdir -p "$(Build.ArtifactStagingDirectory)/plan-review" \
+                       "$(Build.ArtifactStagingDirectory)/plan-binary"
+              cp tfplan.txt "$(Build.ArtifactStagingDirectory)/plan-review/"
+              cp tfplan     "$(Build.ArtifactStagingDirectory)/plan-binary/"
+              echo "📋 Plan rendered — approver: review the terraform-plan-review artifact."
+            displayName: 'Prepare Terraform Plan Artifacts'
+
+          # Human-readable plan: this is what the DeployGreen approver opens.
           - task: PublishPipelineArtifact@1
-            displayName: 'Publish Terraform Plan Artifact'
+            displayName: 'Publish Plan (Review — tfplan.txt)'
             inputs:
-              targetPath: '$(System.DefaultWorkingDirectory)/infra'
+              targetPath: '$(Build.ArtifactStagingDirectory)/plan-review'
+              artifact: 'terraform-plan-review'
+              publishLocation: 'pipeline'
+
+          # Binary plan: consumed only by the DeployGreen apply.
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish Plan (Binary — tfplan)'
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)/plan-binary'
               artifact: 'terraform-plan'
               publishLocation: 'pipeline'
 
