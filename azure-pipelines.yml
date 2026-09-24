@@ -130,29 +130,42 @@ stages:
 
           - script: |
               echo "=== Running IaC Scan (Checkov) ==="
-              docker run --rm -v $(System.DefaultWorkingDirectory):/repo \
+
+              docker run --rm \
+                -v $(System.DefaultWorkingDirectory):/repo \
                 -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
-                bridgecrew/checkov:3.3.19 -d /repo --framework terraform dockerfile \
-                --soft-fail --quiet -o cli -o sarif --output-file-path console,/out/checkov.sarif
+                bridgecrew/checkov:3.3.19 \
+                -d /repo \
+                --framework terraform dockerfile \
+                -o cli \
+                -o sarif \
+                --output-file-path console,/out/checkov.sarif
+
               exit_code=$?
+              echo "Checkov exit code: $exit_code"
 
               SARIF="$(Build.ArtifactStagingDirectory)/CodeAnalysisLogs/checkov.sarif"
-              if [ $exit_code -ne 0 ]; then
-                echo "Checkov failed to run (exit $exit_code)"; exit $exit_code
-              elif [ ! -s "$SARIF" ]; then
-                echo "##vso[task.logissue type=warning]Checkov SARIF was not produced"
+
+              if [ $exit_code -eq 0 ]; then
+                echo "No Checkov issues found."
+
+              elif [ $exit_code -eq 1 ]; then
+                echo "##vso[task.logissue type=warning]Checkov found failed security checks — review the SARIF results."
+                echo "##vso[task.complete result=SucceededWithIssues;]"
+
               else
-                n=$(jq '[.runs[].results[]?] | length' "$SARIF")
-                if [ "$n" -gt 0 ]; then
-                  echo "##vso[task.logissue type=warning]Checkov reported $n failed checks — review output above."
-                  echo "##vso[task.complete result=SucceededWithIssues;]"
-                fi
+                echo "Checkov failed to run properly (exit code $exit_code) — this is a tooling issue, not a detection result."
+                exit $exit_code
               fi
+
+              # Make sure the SARIF report actually exists.
+              if [ ! -s "$SARIF" ]; then
+                echo "##vso[task.logissue type=error]Checkov SARIF report was not produced."
+                exit 1
+              fi
+
             displayName: 'IaC Scan (Checkov)'
 
-          # The SP (with AcrPush role on ACR) logs Docker into the registry.
-          # Credentials are stored in ~/.docker/config.json on the agent
-          # and persist for all subsequent steps in this job.
           - task: AzureCLI@2
             displayName: 'Login to ACR'
             inputs:
@@ -310,6 +323,14 @@ stages:
               echo "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Security scan findings]$MD"
             displayName: 'Publish Security Findings Summary'
             condition: always()
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish SARIF (CodeAnalysisLogs)'
+            condition: always()
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)/CodeAnalysisLogs'
+              ArtifactName: 'CodeAnalysisLogs'
+              publishLocation: 'Pipeline'
 
   # ============================================================
   # Stage 2: Terraform Plan
