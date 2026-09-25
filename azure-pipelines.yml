@@ -290,11 +290,14 @@ stages:
               OUT="$(Build.ArtifactStagingDirectory)/CodeAnalysisLogs"
               MD="$(Build.ArtifactStagingDirectory)/security-summary.md"
               {
-                echo "| Tool | Error | Warning | Note | Total |"
-                echo "|---|---:|---:|---:|---:|"
+                echo "## 🛡️ Security Scan Summary"
+                echo ""
+                echo "| Tool | 🔴 Error | 🟠 Warning | 🔵 Note | Total |"
+                echo "|:---|---:|---:|---:|---:|"
                 for f in "$OUT"/*.sarif; do
                   jq -r '
-                    (input_filename | split("/")[-1] | sub("\\.sarif$";"")) as $t
+                    (input_filename | split("/")[-1] | sub("\\.sarif$";"")) as $raw_t
+                    | ($raw_t | sub("trivy-"; "Trivy ") | sub("gitleaks"; "Gitleaks") | sub("semgrep"; "Semgrep") | sub("checkov"; "Checkov")) as $t
                     | [ .runs[]
                         | (.tool.driver.rules // []) as $rules
                         | .results[]?
@@ -302,21 +305,32 @@ stages:
                           // (if .ruleIndex != null then $rules[.ruleIndex].defaultConfiguration.level else null end)
                           // "warning")
                       ] as $l
-                    | "| \($t) | \($l|map(select(.=="error"))|length) | \($l|map(select(.=="warning"))|length) | \($l|map(select(.=="note"))|length) | \($l|length) |"
+                    | "| **\($t)** | \($l|map(select(.=="error"))|length) | \($l|map(select(.=="warning"))|length) | \($l|map(select(.=="note"))|length) | **\($l|length)** |"
                   ' "$f"
                 done
                 for t in gitleaks semgrep trivy-fs trivy-backend trivy-frontend checkov; do
-                  [ -s "$OUT/$t.sarif" ] || echo "| ⚠️ $t | no SARIF produced | | | |"
+                  [ -s "$OUT/$t.sarif" ] || echo "| ⚠️ **$t** | *no scan output* | | | |"
                 done
-                echo; echo "**Top findings (10 per tool)**"; echo
-                echo "| Tool | Rule | Message | Location |"
-                echo "|---|---|---|---|"
+                
+                echo ""
+                echo "### 🔍 Top Findings (first 10 per tool)"
+                echo ""
+                echo "| Tool | Severity | Rule | Message | Location |"
+                echo "|:---|:---|:---|:---|:---|"
                 for f in "$OUT"/*.sarif; do
                   jq -r '
-                    (input_filename | split("/")[-1] | sub("\\.sarif$";"")) as $t
-                    | [.runs[].results[]?][:10][]
+                    (input_filename | split("/")[-1] | sub("\\.sarif$";"")) as $raw_t
+                    | ($raw_t | sub("trivy-"; "Trivy ") | sub("gitleaks"; "Gitleaks") | sub("semgrep"; "Semgrep") | sub("checkov"; "Checkov")) as $t
+                    | [ .runs[] | (.tool.driver.rules // []) as $rules | .results[]? | . + {
+                        "severity": (.level // (if .ruleIndex != null then $rules[.ruleIndex].defaultConfiguration.level else null end) // "warning")
+                      } 
+                      ][:10][]
                     | (.locations[0].physicalLocation.artifactLocation.uri // "-" | sub("^/?(src|path|repo)/";"")) as $u
-                    | "| \($t) | `\(.ruleId)` | \(.message.text | gsub("[\\n|]";" ") | .[0:160]) | `\($u):\(.locations[0].physicalLocation.region.startLine // "")` |"
+                    | (if .locations[0].physicalLocation.region.startLine != null then ":" + (.locations[0].physicalLocation.region.startLine | tostring) else "" end) as $line
+                    | (.message.text // .message.markdown // "No description") | gsub("[\\n|]";" ") as $msg
+                    | (if ($msg | length) > 100 then ($msg[0:97] + "...") else $msg end) as $trunc_msg
+                    | (if .severity == "error" then "🔴 Error" elif .severity == "warning" then "🟠 Warning" else "🔵 Note" end) as $sev
+                    | "| \($t) | \($sev) | `\(.ruleId)` | \($trunc_msg) | `\($u)\($line)` |"
                   ' "$f"
                 done
               } > "$MD"
