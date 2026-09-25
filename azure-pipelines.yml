@@ -107,7 +107,7 @@ stages:
                 -e SEMGREP_APP_TOKEN \
                 -v $(System.DefaultWorkingDirectory):/src \
                 -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
-                -w /src --error \
+                -w /src \
                 semgrep/semgrep:1.175.0 semgrep ci \
                 --sarif-output=/out/semgrep-pro.sarif
               exit_code=$?
