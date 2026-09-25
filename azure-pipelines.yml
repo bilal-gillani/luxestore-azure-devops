@@ -311,7 +311,7 @@ stages:
                 for t in gitleaks semgrep trivy-fs trivy-backend trivy-frontend checkov; do
                   [ -s "$OUT/$t.sarif" ] || echo "| ⚠️ **$t** | *no scan output* | | | |"
                 done
-                
+
                 echo ""
                 echo "### 🔍 Top Findings (first 10 per tool)"
                 echo ""
@@ -323,18 +323,17 @@ stages:
                     | ($raw_t | sub("trivy-"; "Trivy ") | sub("gitleaks"; "Gitleaks") | sub("semgrep"; "Semgrep") | sub("checkov"; "Checkov")) as $t
                     | [ .runs[] | (.tool.driver.rules // []) as $rules | .results[]? | . + {
                         "severity": (.level // (if .ruleIndex != null then $rules[.ruleIndex].defaultConfiguration.level else null end) // "warning")
-                      } 
+                      }
                       ][:10][]
                     | (.locations[0].physicalLocation.artifactLocation.uri // "-" | sub("^/?(src|path|repo)/";"")) as $u
                     | (if .locations[0].physicalLocation.region.startLine != null then ":" + (.locations[0].physicalLocation.region.startLine | tostring) else "" end) as $line
-                    | (.message.text // .message.markdown // "No description") | gsub("[\\n|]";" ") as $msg
+                    | ((.message.text // .message.markdown // "No description") | gsub("\\n|\\|";" ")) as $msg
                     | (if ($msg | length) > 100 then ($msg[0:97] + "...") else $msg end) as $trunc_msg
                     | (if .severity == "error" then "🔴 Error" elif .severity == "warning" then "🟠 Warning" else "🔵 Note" end) as $sev
                     | "| \($t) | \($sev) | `\(.ruleId)` | \($trunc_msg) | `\($u)\($line)` |"
                   ' "$f"
                 done
               } > "$MD"
-              ls -la $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs
               echo "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Security scan findings]$MD"
             displayName: 'Publish Security Findings Summary'
             condition: always()
