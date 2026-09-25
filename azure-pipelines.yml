@@ -301,7 +301,7 @@ stages:
                 for f in "$OUT"/*.sarif; do
                   jq -r '
                     (input_filename | split("/")[-1] | sub("\\.sarif$";"")) as $raw_t
-                    | ($raw_t | sub("trivy-"; "Trivy ") | sub("gitleaks"; "Gitleaks") | sub("semgrep"; "Semgrep") | sub("checkov"; "Checkov")) as $t
+                    | ($raw_t | sub("trivy-"; "Trivy ") | sub("semgrep-pro"; "Semgrep Pro") | sub("gitleaks"; "Gitleaks") | sub("checkov"; "Checkov")) as $t
                     | [ .runs[]
                         | (.tool.driver.rules // []) as $rules
                         | .results[]?
@@ -312,7 +312,7 @@ stages:
                     | "| **\($t)** | \($l|map(select(.=="error"))|length) | \($l|map(select(.=="warning"))|length) | \($l|map(select(.=="note"))|length) | **\($l|length)** |"
                   ' "$f"
                 done
-                for t in gitleaks semgrep trivy-fs trivy-backend trivy-frontend checkov; do
+                for t in gitleaks semgrep-pro trivy-fs trivy-backend trivy-frontend checkov; do
                   [ -s "$OUT/$t.sarif" ] || echo "| ⚠️ **$t** | *no scan output* | | | |"
                 done
 
@@ -324,7 +324,7 @@ stages:
                 for f in "$OUT"/*.sarif; do
                   jq -r '
                     (input_filename | split("/")[-1] | sub("\\.sarif$";"")) as $raw_t
-                    | ($raw_t | sub("trivy-"; "Trivy ") | sub("gitleaks"; "Gitleaks") | sub("semgrep"; "Semgrep") | sub("checkov"; "Checkov")) as $t
+                    | ($raw_t | sub("trivy-"; "Trivy ") | sub("semgrep-pro"; "Semgrep Pro") | sub("gitleaks"; "Gitleaks") | sub("checkov"; "Checkov")) as $t
                     | [ .runs[] | (.tool.driver.rules // []) as $rules | .results[]? | . + {
                         "severity": (.level // (if .ruleIndex != null then $rules[.ruleIndex].defaultConfiguration.level else null end) // "warning")
                       }
