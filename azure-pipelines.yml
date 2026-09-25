@@ -129,6 +129,31 @@ stages:
             displayName: 'SCA Scan (Trivy fs)'
 
           - script: |
+              echo "=== Running SAST Scan (Semgrep Pro via AppSec Platform) ==="
+              docker run --rm \
+                -e SEMGREP_APP_TOKEN \
+                -v $(System.DefaultWorkingDirectory):/src \
+                -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
+                -w /src \
+                semgrep/semgrep:1.175.0 semgrep ci \
+                --sarif-output=/out/semgrep-pro.sarif
+              exit_code=$?
+              echo "Semgrep Pro exit code: $exit_code"
+
+              if [ $exit_code -eq 0 ]; then
+                echo "No SAST issues found (Pro rules)."
+              elif [ $exit_code -eq 1 ]; then
+                echo "##vso[task.logissue type=warning]Semgrep Pro found potential security issues — review scan output above."
+                echo "##vso[task.complete result=SucceededWithIssues;]"
+              else
+                echo "Semgrep Pro failed to run properly (exit code $exit_code) — this is a tooling issue, not a detection result."
+                exit $exit_code
+              fi
+            displayName: 'SAST Scan (Semgrep Pro - AppSec Platform)'
+            env:
+              SEMGREP_APP_TOKEN: $(semgrepAppToken)
+
+          - script: |
               echo "=== Running IaC Scan (Checkov) ==="
 
               docker run --rm \
