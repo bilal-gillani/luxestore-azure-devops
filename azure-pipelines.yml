@@ -66,8 +66,6 @@ stages:
                 -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
                 zricethezav/gitleaks:v8.30.1 detect --source=/path -v --redact \
                 --report-format sarif --report-path /out/gitleaks.sarif
-              exit_code=$?
-              echo "Gitleaks exit code: $exit_code"
             displayName: 'Secrets Scan (Gitleaks)'
 
           - script: |
