@@ -1,5 +1,5 @@
 trigger:
-  - main
+  - none
 
 pool:
   vmImage: ubuntu-24.04
@@ -80,30 +80,30 @@ stages:
               fi
             displayName: 'Secrets Scan (Gitleaks)'
 
-          # - script: |
-          #     echo "=== Running SAST Scan (Semgrep Pro via AppSec Platform) ==="
-          #     docker run --rm \
-          #       -e SEMGREP_APP_TOKEN \
-          #       -v $(System.DefaultWorkingDirectory):/src \
-          #       -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
-          #       -w /src \
-          #       semgrep/semgrep:1.175.0 semgrep ci \
-          #       --sarif-output=/out/semgrep-pro.sarif
-          #     exit_code=$?
-          #     echo "Semgrep Pro exit code: $exit_code"
+          - script: |
+              echo "=== Running SAST Scan (Semgrep Pro via AppSec Platform) ==="
+              docker run --rm \
+                -e SEMGREP_APP_TOKEN \
+                -v $(System.DefaultWorkingDirectory):/src \
+                -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
+                -w /src \
+                semgrep/semgrep:1.175.0 semgrep ci \
+                --sarif-output=/out/semgrep-pro.sarif
+              exit_code=$?
+              echo "Semgrep Pro exit code: $exit_code"
 
-          #     if [ $exit_code -eq 0 ]; then
-          #       echo "No SAST issues found (Pro rules)."
-          #     elif [ $exit_code -eq 1 ]; then
-          #       echo "##vso[task.logissue type=warning]Semgrep Pro found potential security issues — review scan output above."
-          #       echo "##vso[task.complete result=SucceededWithIssues;]"
-          #     else
-          #       echo "Semgrep Pro failed to run properly (exit code $exit_code) — this is a tooling issue, not a detection result."
-          #       exit $exit_code
-          #     fi
-          #   displayName: 'SAST Scan (Semgrep Pro - AppSec Platform)'
-          #   env:
-          #     SEMGREP_APP_TOKEN: $(semgrepAppToken)
+              if [ $exit_code -eq 0 ]; then
+                echo "No SAST issues found (Pro rules)."
+              elif [ $exit_code -eq 1 ]; then
+                echo "##vso[task.logissue type=warning]Semgrep Pro found potential security issues — review scan output above."
+                echo "##vso[task.complete result=SucceededWithIssues;]"
+              else
+                echo "Semgrep Pro failed to run properly (exit code $exit_code) — this is a tooling issue, not a detection result."
+                exit $exit_code
+              fi
+            displayName: 'SAST Scan (Semgrep Pro - AppSec Platform)'
+            env:
+              SEMGREP_APP_TOKEN: $(semgrepAppToken)
 
           - script: |
               echo "=== Running SCA Scan (Trivy fs) ==="
@@ -658,15 +658,7 @@ stages:
   # ============================================================
   # Stage 5: Traffic Switch (Production Approval Gate)
   # SKIPPED on bootstrap (isBootstrap=true) — green is already live at 100%.
-  # On normal runs: approval fires here. Approver reviews:
-  #   - Stage 2 TF Plan artifact (terraform-plan → tfplan.txt)
-  #   - Stage 4 smoke test results
-  #   - Green app live at the ---green label URL
   # On approval: Terraform apply flips blue=0%, green=100%.
-  #
-  # SETUP REQUIRED (one-time):
-  #   Pipelines → Environments → New → name: "production"
-  #   → Approvals and checks → + → Approvals → add approver → Save
   # ============================================================
   - stage: TrafficSwitch
     displayName: 'Traffic Switch — Green to Production (Gated)'
