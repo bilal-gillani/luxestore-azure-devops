@@ -81,27 +81,6 @@ stages:
             displayName: 'Secrets Scan (Gitleaks)'
 
           - script: |
-              echo "=== Running SAST Scan (Semgrep) ==="
-              # We use a docker container for Semgrep
-              docker run --rm -v $(System.DefaultWorkingDirectory):/src \
-                -v $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs:/out \
-                semgrep/semgrep:1.175.0 semgrep scan --config=auto --error \
-                --sarif-output=/out/semgrep.sarif /src
-              exit_code=$?
-              echo "Semgrep exit code: $exit_code"
-              
-              if [ $exit_code -eq 0 ]; then
-                echo "No SAST issues found."
-              elif [ $exit_code -eq 1 ]; then
-                echo "##vso[task.logissue type=warning]Semgrep found potential security issues — review scan output above."
-                echo "##vso[task.complete result=SucceededWithIssues;]"
-              else
-                echo "Semgrep failed to run properly (exit code $exit_code) — this is a tooling issue, not a detection result."
-                exit $exit_code
-              fi
-            displayName: 'SAST Scan (Semgrep)'
-
-          - script: |
               echo "=== Running SAST Scan (Semgrep Pro via AppSec Platform) ==="
               docker run --rm \
                 -e SEMGREP_APP_TOKEN \
