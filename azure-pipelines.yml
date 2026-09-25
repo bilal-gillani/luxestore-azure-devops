@@ -1,5 +1,5 @@
 trigger:
-  - main
+  - none
 
 pool:
   vmImage: ubuntu-24.04
@@ -320,6 +320,7 @@ stages:
                   ' "$f"
                 done
               } > "$MD"
+              ls -la $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs
               echo "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Security scan findings]$MD"
             displayName: 'Publish Security Findings Summary'
             condition: always()
@@ -330,7 +331,7 @@ stages:
             inputs:
               PathtoPublish: '$(Build.ArtifactStagingDirectory)/CodeAnalysisLogs'
               ArtifactName: 'CodeAnalysisLogs'
-              publishLocation: 'Pipeline'
+              publishLocation: 'Container'
 
   # ============================================================
   # Stage 2: Terraform Plan
