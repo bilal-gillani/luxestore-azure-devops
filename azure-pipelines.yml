@@ -333,6 +333,32 @@ stages:
               ArtifactName: 'CodeAnalysisLogs'
               publishLocation: 'Container'
 
+          - script: |
+              echo "=== Converting SARIF to JUnit XML ==="
+              shopt -s nullglob
+              OUT="$(Build.ArtifactStagingDirectory)/CodeAnalysisLogs"
+              for f in "$OUT"/*.sarif; do
+                if [ -s "$f" ]; then
+                  filename=$(basename "$f" .sarif)
+                  echo "Converting $filename.sarif..."
+                  npx -y sarif-junit -i "$f" -o "$OUT/$filename-junit.xml"
+                fi
+              done
+            displayName: 'Convert SARIF to JUnit (For native ADO UI)'
+            condition: always()
+
+          - task: PublishTestResults@2
+            displayName: 'Publish Security Scans as Tests'
+            condition: always()
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: '*-junit.xml'
+              searchFolder: '$(Build.ArtifactStagingDirectory)/CodeAnalysisLogs'
+              testRunTitle: 'Security Vulnerability Scans'
+              mergeTestResults: true
+              # We don't fail the pipeline automatically here; we let the scripts decide.
+              failTaskOnFailedTests: false
+
   # ============================================================
   # Stage 2: Terraform Plan
   # Fetches the current live (blue) revision suffixes from Azure,
