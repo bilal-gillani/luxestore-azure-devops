@@ -1,19 +1,18 @@
 -- ================================================
 -- E-Commerce Store - Seed Data
--- Run this AFTER init.sql on the Database VM
+-- Run this AFTER init.sql on the Database Server
 -- ================================================
-
--- IMPORTANT: Before running this file, generate a real bcrypt hash for the admin password.
---   node -e "const b=require('bcryptjs'); b.hash('admin-pass',10).then(h=>console.log(h));"
--- Then replace REPLACE_WITH_GENERATED_HASH below with the output.
 
 USE ecommerce_store;
 
 -- ------------------------------------------------
 -- Admin User
 -- Default password: [PASSWORD]
--- Replace the hash below with one generated from the command above
+-- Replace the hash below with one generated from the command below
+-- node -e "console.log(require('bcrypt').hashSync('[PASSWORD]', 10))"
+-- The hash will be flagged during security testing in pipeline run
 -- ------------------------------------------------
+
 INSERT INTO users (name, email, password_hash, role, avatar_color) VALUES
 ('Admin User', 'admin@email.com', '$2a$10$ioST6fMeO2Zq3oPtM5JuVuM5Ks.64iZb4uhiwLbQUdWHxuNJ7rF.S', 'admin', '#EF4444');
 

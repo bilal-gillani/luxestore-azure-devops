@@ -15,7 +15,7 @@ const errorHandler = require('./middleware/errorHandler');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Trust the first proxy (Apache/Nginx reverse proxy)
+
 // Required when behind a reverse proxy that sets X-Forwarded-For
 app.set('trust proxy', 1);
 
@@ -65,11 +65,12 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// app.get('/api/demo-error', (req, res) => {
-//     // This exact string will be picked up by our KQL query
-//     console.error("ERROR: Simulated critical production failure for demo purposes.");
-//     res.status(500).json({ error: "Simulated Error" });
-// });
+// Demo error route for testing - Intentionally causing an error
+app.get('/api/demo-error', (req, res) => {
+    // This exact string will be picked up by our KQL query
+    console.error("ERROR: Simulated critical production failure for demo purposes.");
+    res.status(500).json({ error: "Simulated Error" });
+});
 
 // ── API Routes ──────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);

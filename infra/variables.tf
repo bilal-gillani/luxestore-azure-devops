@@ -7,7 +7,7 @@ variable "resource_group_name" {
 variable "mysql_server_name" {
   type        = string
   description = "The name of the Azure Database for MySQL Flexible Server."
-  default     = "mysql-server-name"
+  default     = "mysql-name"
 }
 
 variable "database_name" {

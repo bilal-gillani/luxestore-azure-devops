@@ -1,5 +1,5 @@
 resource_group_name       = "rg-name"
-mysql_server_name         = "mysql-server-name"
+mysql_server_name         = "mysql-name"
 database_name             = "ecommerce_store"
 acr_name                  = "acr-name"
 backend_image_repository  = "luxestore-backend"
