@@ -1,5 +1,6 @@
+# Replace none with the name of the branch you wanna push code to
 trigger:
-  - main
+  - none
 
 pool:
   vmImage: ubuntu-24.04
