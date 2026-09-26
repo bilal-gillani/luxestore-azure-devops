@@ -56,8 +56,8 @@ What happens if a bad deployment slips through? This pipeline features an automa
 
 ### 1. DevSecOps Security Scan Summary
 > *Summary of aggregated SARIF security scan results.*
-![DevSecOps Scans](docs/images/scan-results1.png)
-![DevSecOps Scans](docs/images/scan-results2.png)
+![DevSecOps Scans](docs/images/scan-results-1.png)
+![DevSecOps Scans](docs/images/scan-results-2.png)
 
 ### 2. Smoke Tests on Green Revision
 > *Smoke tests on Green Revision.*
